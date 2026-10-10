@@ -36,6 +36,7 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -115,7 +116,7 @@ class NativePlayer(
         val (minB, maxB, startB, rebufB) = when (bufferProfile) {
             "stable" -> listOf(30_000, 120_000, 2_500, 5_000)
             "balanced" -> listOf(20_000, 60_000, 1_000, 3_000)
-            else -> listOf(15_000, 50_000, 500, 2_000)
+            else -> listOf(15_000, 50_000, 1_000, 2_500)
         }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(minB, maxB, startB, rebufB)
@@ -315,10 +316,24 @@ class NativePlayer(
     private var lastVolume = 1f
     fun setVolume(v: Float) { lastVolume = v.coerceIn(0f, 1f); player.volume = lastVolume }
 
-    /** Komşu kanalın sunucusuna önceden bağlan: DNS + TCP + TLS hazır olsun. */
+    private val warmed = HashMap<String, Long>()
+
+    /**
+     * Sunucuya önceden bağlan (DNS + TCP + TLS hazır olsun), ama YAYINI AÇMADAN:
+     * yalnızca sunucunun ana adresine kısa bir HEAD isteği gider. Böylece hesabın
+     * eşzamanlı bağlantı sınırı aşılmaz ve izlenen yayın kesilmez.
+     */
     fun preconnect(url: String) {
+        val u = url.toHttpUrlOrNull() ?: return
+        val origin = "${u.scheme}://${u.host}:${u.port}/"
+        val now = System.currentTimeMillis()
+        synchronized(warmed) {
+            val last = warmed[origin]
+            if (last != null && now - last < 60_000) return
+            warmed[origin] = now
+        }
         val req = try {
-            Request.Builder().url(url).header("User-Agent", userAgent).header("Range", "bytes=0-1023").build()
+            Request.Builder().url(origin).head().header("User-Agent", userAgent).build()
         } catch (_: Exception) { return }
         http.newCall(req).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {}
