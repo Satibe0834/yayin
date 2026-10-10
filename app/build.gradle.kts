@@ -24,6 +24,8 @@ android {
         }
     }
     compileOptions {
+        // FFmpeg çözücü kütüphanesi bunu gerektiriyor
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -34,6 +36,7 @@ android {
 val media3 = "1.3.1"
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.2")
 
@@ -45,7 +48,6 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 
     // FFmpeg ses çözücü: AC3, E-AC3, DTS, MP2, TrueHD, Opus, FLAC, ALAC...
-    // (Jellyfin projesinin Maven Central'da yayımladığı hazır derleme)
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
 
     // Telefonla kurulum: yerel web sunucusu + QR kod
