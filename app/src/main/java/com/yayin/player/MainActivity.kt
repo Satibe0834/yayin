@@ -88,9 +88,14 @@ class MainActivity : ComponentActivity() {
         val text = try { f.readText().take(3500) } catch (_: Exception) { "" }
         f.delete()
         if (text.isBlank()) return
+        // Çökmenin sebebi FFmpeg ise bir daha kullanma (uygulama tekrar tekrar çökmesin)
+        val ffmpegNote = if (text.contains("ffmpeg", ignoreCase = true)) {
+            getSharedPreferences("yayin", MODE_PRIVATE).edit().putBoolean("ffmpegBroken", true).apply()
+            "\n\nFFmpeg ses çözücü bu cihazda kapatıldı."
+        } else ""
         android.app.AlertDialog.Builder(this)
             .setTitle("Uygulama son açılışta kapandı")
-            .setMessage("Lütfen bu ekranın fotoğrafını çekip gönderin:\n\n$text")
+            .setMessage("Lütfen bu ekranın fotoğrafını çekip gönderin:\n\n$text$ffmpegNote")
             .setPositiveButton("Tamam", null)
             .show()
     }

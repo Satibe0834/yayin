@@ -63,6 +63,10 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
 
+    // FFmpeg ses çözücü (yalnızca ses; cihazın çözemediği MP2/AC3/DTS vb. için).
+    // Bkz. YayinRenderers.kt – deneysel video çözücüsü bilerek kullanılmaz.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
+
     // Telefonla kurulum: yerel web sunucusu + QR kod
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("com.google.zxing:core:3.5.3")

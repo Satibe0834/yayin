@@ -69,6 +69,7 @@ class NativePlayer(
     private val main = Handler(Looper.getMainLooper())
     private var vodItems = JSONArray()
     private var liveRetries = 0
+    private var triedAsHls = false
     private var wasPlayingOnPause = false
 
     // Bağlantıları açık tutan ortak HTTP istemcisi: komşu kanallara ön bağlantı
@@ -107,12 +108,10 @@ class NativePlayer(
 
         // Önce cihazın donanım çözücüsü; desteklemediği ses biçimleri (AC3, E-AC3, DTS,
         // MP2, TrueHD...) için FFmpeg devreye girer. Çözücü açılamazsa bir sonrakine geçer.
-        val renderers = DefaultRenderersFactory(activity)
-            .setExtensionRendererMode(
-                if (ffmpegMode == "prefer") DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-            )
-            .setEnableDecoderFallback(true)
+        // Cihazın çözücüleri + gerekirse FFmpeg ses (önceki çökmede FFmpeg suçluysa kapalı kalır)
+        val ffmpegAllowed = ffmpegMode != "off" &&
+            !activity.getSharedPreferences("yayin", android.content.Context.MODE_PRIVATE).getBoolean("ffmpegBroken", false)
+        val renderers = YayinRenderers(activity, ffmpegAllowed)
 
         // Arabellek profili: hızlı başlangıçta 0,5 sn veri gelince oynatmaya başlar
         val (minB, maxB, startB, rebufB) = when (bufferProfile) {
@@ -204,6 +203,7 @@ class NativePlayer(
             }
 
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) triedAsHls = false
                 if (mode != Mode.VOD) return
                 val i = player.currentMediaItemIndex
                 updateTitle(i)
@@ -211,6 +211,21 @@ class NativePlayer(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // Biçim tanınmadıysa: bazı sağlayıcılar .mp4/.mkv adresinden HLS yayını verir → bir kez HLS olarak dene
+                if (!triedAsHls && (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
+                    val item = player.currentMediaItem
+                    if (item != null && mode != Mode.NONE) {
+                        triedAsHls = true
+                        val idx = player.currentMediaItemIndex
+                        val pos = player.currentPosition.coerceAtLeast(0)
+                        player.replaceMediaItem(idx, item.buildUpon().setMimeType(MimeTypes.APPLICATION_M3U8).build())
+                        player.seekTo(idx, pos)
+                        player.prepare()
+                        player.playWhenReady = true
+                        return
+                    }
+                }
                 if (mode == Mode.LIVE) {
                     // Canlı yayında geride kalma ya da kısa ağ kopmasında sessizce yeniden bağlan
                     if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW || liveRetries < 2) {
@@ -282,6 +297,7 @@ class NativePlayer(
     // ---------------- Canlı TV ----------------
 
     fun playLive(url: String) {
+        triedAsHls = false
         if (mode == Mode.VOD) closeVod(notify = false)
         // Aynı kanal zaten oynuyorsa (ör. ana menü arka planından Canlı TV'ye geçiş) yeniden yükleme
         if (mode == Mode.LIVE && player.playbackState != Player.STATE_IDLE &&
@@ -351,6 +367,7 @@ class NativePlayer(
 
     fun playVod(json: String, index: Int, startMs: Long) {
         vodItems = try { JSONArray(json) } catch (_: Exception) { return }
+        triedAsHls = false
         if (vodItems.length() == 0) return
         mode = Mode.VOD
         val items = (0 until vodItems.length()).map { i ->
