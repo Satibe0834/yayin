@@ -30,6 +30,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -91,6 +92,7 @@ class NativePlayer(
     private var audioLang = ""
     private var subLang = ""
     private var subScale = 1f
+    private var quality = "max"
 
     var player: ExoPlayer = buildPlayer()
         private set
@@ -117,14 +119,18 @@ class NativePlayer(
         val (minB, maxB, startB, rebufB) = when (bufferProfile) {
             "stable" -> listOf(30_000, 120_000, 2_500, 5_000)
             "balanced" -> listOf(20_000, 60_000, 1_000, 3_000)
-            else -> listOf(15_000, 50_000, 1_000, 2_500)
+            else -> listOf(12_000, 50_000, 500, 2_000)
         }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(minB, maxB, startB, rebufB)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        // Bağlantı hızı ölçülene kadar düşük kaliteyle başlamasın: başlangıç tahmini yüksek
+        val bandwidth = DefaultBandwidthMeter.Builder(activity).setInitialBitrateEstimate(30_000_000L).build()
+
         return ExoPlayer.Builder(activity, renderers)
+            .setBandwidthMeter(bandwidth)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource, extractors))
             .setLoadControl(loadControl)
             .setAudioAttributes(
@@ -263,6 +269,7 @@ class NativePlayer(
         val newFfmpeg = o.optString("ffmpeg", "on")
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
+        quality = o.optString("quality", "max")
         subLang = o.optString("subLang", "")
         subScale = when (o.optString("subSize", "normal")) { "small" -> 0.8f; "large" -> 1.3f; "xlarge" -> 1.6f; else -> 1f }
 
@@ -278,6 +285,8 @@ class NativePlayer(
             .setPreferredAudioLanguage(audioLang.ifBlank { null })
             .setPreferredTextLanguage(if (subLang.isBlank() || subLang == "off") null else subLang)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subLang == "off")
+            // "En yüksek": birden fazla kalitesi olan yayınlarda (HLS) daima en iyi kaliteyi seç
+            .setForceHighestSupportedBitrate(quality == "max")
             .build()
     }
 
@@ -351,7 +360,7 @@ class NativePlayer(
         val now = System.currentTimeMillis()
         synchronized(warmed) {
             val last = warmed[origin]
-            if (last != null && now - last < 60_000) return
+            if (last != null && now - last < 8_000) return
             warmed[origin] = now
         }
         val req = try {
