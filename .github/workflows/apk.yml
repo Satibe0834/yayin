@@ -22,6 +22,20 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      # Kalıcı imza anahtarı: yalnızca ilk seferde oluşturulup depoya kaydedilir.
+      # Böylece her yeni sürüm eskisinin üzerine (silmeden) kurulabilir.
+      - name: İmza anahtarı
+        run: |
+          if [ ! -f app/release.keystore ]; then
+            keytool -genkeypair -v -keystore app/release.keystore -alias yayin -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass yayin-imza -keypass yayin-imza -dname "CN=Yayin, O=Yayin, C=TR"
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add app/release.keystore
+            git commit -m "Kalıcı imza anahtarı [skip ci]"
+            git push
+          fi
+
       - name: APK derle
         run: |
           gradle assembleRelease --no-daemon
@@ -35,6 +49,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: Yayın ${{ github.run_number }}
+          name: Yayın 1.${{ github.run_number }}
           files: yayin.apk
           make_latest: true
