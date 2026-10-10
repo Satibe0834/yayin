@@ -718,6 +718,10 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   <button class="btn" id="pManage">Profilleri yönet</button>
 </section>
 
+<div class="remind hidden" id="updBar" role="alert">
+  <div style="flex:1;min-width:0"><b id="ubTitle">Yeni sürüm hazır</b><span id="ubSub"></span></div>
+  <button class="btn primary" id="ubGo">⬇ Güncelle</button><button class="btn" id="ubX">Sonra</button>
+</div>
 <div class="remind hidden" id="remind" role="alert">
   <div style="flex:1;min-width:0"><b id="rmTitle"></b><span id="rmSub"></span></div>
   <button class="btn primary" id="rmGo">▶ İzle</button><button class="btn" id="rmX">Kapat</button>
@@ -933,7 +937,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4 };
+    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -2015,6 +2019,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     if (!$('watch').classList.contains('hidden')){ watchKey(e); return; }
     if (!$('eps').classList.contains('hidden')){ epsKey(e); return; }
     if (!$('vod').classList.contains('hidden')){ vodKey(e); return; }
+    if (e.target.closest && e.target.closest('#updBar')){ if (e.key === 'Escape' || e.key === 'Backspace'){ e.preventDefault(); hideUpdBar(); } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ e.preventDefault(); (document.activeElement === $('ubGo') ? $('ubX') : $('ubGo')).focus(); } return; }
     if (e.target.closest && e.target.closest('#remind')){ if (e.key === 'Escape' || e.key === 'Backspace'){ e.preventDefault(); hideRemind(); } return; }
     if (!$('profs').classList.contains('hidden')){ profsKey(e); return; }
     if (!$('mv').classList.contains('hidden')){ mvKey(e); return; }
@@ -2620,6 +2625,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     new MutationObserver(() => requestAnimationFrame(syncRect)).observe($('player'), { attributes:true, subtree:true, attributeFilter:['class'] });
   }
   window.yayinNative = (evt, d) => {
+    if (evt === 'upd'){ onUpdEvent(d); return; }
     if (evt === 'progress'){ saveProg(d.url, d.pos/1000, d.dur/1000); vodSeen.add(d.url); return; }
     if (evt === 'aux-error'){ auxError(d.slot); return; }
     if (evt === 'item'){ if (wCtx){ wCtx.i = d.index; saveMeta(wCtx.S.eps[d.index]?.c, wCtx); } const c = channels.find(x => x.url === d.url); if (c){ wCur = c; recent = [c.url, ...recent.filter(u => u !== c.url)].slice(0,40); store.set('recent', recent); } return; }
@@ -2758,6 +2764,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const d = document.querySelector('dialog[open]'); if (d){ d.close(); return true; }
     if (!$('watch').classList.contains('hidden')){ closeWatch(); return true; }
     if (!$('eps').classList.contains('hidden')){ closeEps(); return true; }
+    if (!$('updBar').classList.contains('hidden')){ hideUpdBar(); return true; }
     if (!$('remind').classList.contains('hidden')){ hideRemind(); return true; }
     if (!$('profs').classList.contains('hidden')){ $('profs').classList.add('hidden'); selectTile(sel); return true; }
     if (!$('mvPick').classList.contains('hidden')){ closePick(); return true; }
@@ -3245,6 +3252,52 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (c.kind === 'live'){ openCat('live'); play(c); } else watchItem(c);
   }
 
+  // ================= UYGULAMA İÇİ GÜNCELLEME =================
+  const upd = { status:'idle', info:null, latest:null, url:'', notes:'', p:0, msg:'' };
+  try { if (APP && APP.updateInfo) upd.info = JSON.parse(APP.updateInfo()); } catch {}
+  const canUpdate = () => !!(upd.info && upd.info.repo);
+  function updRefresh(){ if (!$('settings').classList.contains('hidden') && setSec === 'update' && !catView) renderSettings(); }
+  async function checkUpdate(manual){
+    if (!canUpdate()){ if (manual) toast('Güncelleme yalnızca GitHub\'da derlenen Android uygulamasında çalışır'); return; }
+    upd.status = 'checking'; upd.msg = ''; updRefresh();
+    try {
+      const r = await fetch(`https://api.github.com/repos/${upd.info.repo}/releases/latest`, { headers:{ Accept:'application/vnd.github+json' }, cache:'no-store' });
+      if (!r.ok) throw new Error(r.status === 404 ? 'Henüz yayımlanmış sürüm yok' : 'GitHub ' + r.status + ' hatası verdi');
+      const j = await r.json();
+      const n = parseInt(String(j.tag_name || '').replace(/\D/g, ''), 10) || 0;
+      const a = (j.assets || []).find(x => /\.apk$/i.test(x.name));
+      upd.latest = n; upd.url = a ? a.browser_download_url : ''; upd.notes = j.body || '';
+      upd.status = n > upd.info.code && upd.url ? 'avail' : 'none';
+      store.set('updCheck', Date.now());
+      if (upd.status === 'avail' && !manual) showUpdBar();
+      if (manual && upd.status === 'none') toast('Uygulama güncel');
+    } catch (e){ upd.status = 'err'; upd.msg = e.message || 'Bağlantı hatası'; if (manual) toast('Güncelleme denetlenemedi: ' + upd.msg); }
+    updRefresh();
+  }
+  function startUpdate(){
+    if (!upd.url || upd.status === 'dl') return;
+    upd.status = 'dl'; upd.p = 0; updRefresh(); hideUpdBar();
+    toast('Yeni sürüm indiriliyor…'); APP.updateDownload(upd.url);
+  }
+  function onUpdEvent(d){
+    if (d.err){ upd.status = 'err'; upd.msg = d.err; toast('Güncelleme: ' + d.err); }
+    else if (d.perm || d.permManual){
+      upd.status = 'perm';
+      toast(d.permManual ? 'İzin gerekli: Ayarlar → My Fire TV → Developer Options → Install unknown apps → Yayın: ON' : 'Açılan ekranda "Yayın" için izni açıp geri dönün; kurulum kendiliğinden başlar');
+    }
+    else if (d.installing){ upd.status = 'install'; }
+    else if (d.p != null){ upd.p = d.p; if (d.p % 25 === 0 && d.p < 100) toast(`İndiriliyor… %${d.p}`); }
+    updRefresh();
+  }
+  function showUpdBar(){
+    $('ubSub').textContent = `Sürüm 1.${upd.latest} indirilebilir (şu an: ${upd.info.name}). Ayarların ve listen korunur.`;
+    $('updBar').classList.remove('hidden');
+    if (IS_TV && !$('home').classList.contains('hidden')) setTimeout(() => $('ubGo').focus(), 60);
+  }
+  function hideUpdBar(){ $('updBar').classList.add('hidden'); }
+  $('ubGo').onclick = startUpdate;
+  $('ubX').onclick = () => { hideUpdBar(); selectTile(sel); };
+
   // ================= AYARLAR =================
   const ADULT = /(xxx|adult|porn|\+ ?18|18 ?\+|yeti[sş]kin|erotik|for adults|sexy)/i;
   let unlocked = false;
@@ -3472,8 +3525,17 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
         run:async (btn) => { btn.disabled = true; btn.textContent = 'Ölçülüyor…'; lastSpeed = await speedTest(); renderSettings(); } },
       { type:'text', key:'ua', label:'Özel User-Agent', desc:'Bazı sağlayıcılar belirli bir oynatıcı kimliği ister. Boş bırakırsanız varsayılan kullanılır.', native:true, placeholder:'Örn. VLC/3.0.20 LibVLC/3.0.20' },
     ]},
+    { id:'update', icon:'⬆', title:'Güncelleme', lead:'Yeni sürümler uygulamayı silmeden, ayarlarınız ve listeniz korunarak kurulur.', rows:() => [
+      { type:'info', label:'Yüklü sürüm', value:() => upd.info ? upd.info.name : (APP ? 'Bilinmiyor' : 'Web sürümü') },
+      { type:'button', label:'Güncellemeleri denetle', dis:() => !canUpdate(),
+        desc:() => ({ idle:'GitHub\'daki en son sürümle karşılaştırır.', checking:'Denetleniyor…', none:'Uygulama güncel. 👍', avail:`Yeni sürüm var: 1.${upd.latest}`,
+          dl:`İndiriliyor… %${upd.p}`, perm:'Kurulum izni bekleniyor. Fire TV\'de: Ayarlar → My Fire TV → Developer Options → Install unknown apps → Yayın: ON', install:'Kurulum ekranı açıldı. "Yükle / Install" deyin.', err:'Hata: ' + upd.msg })[upd.status] || '',
+        action:'Denetle', run:() => checkUpdate(true) },
+      (upd.status === 'avail' || upd.status === 'perm' || upd.status === 'err' && upd.url) && { type:'button', label:`Sürüm 1.${upd.latest} yükle`, desc:'İndirilir ve Android\'in kurulum ekranı açılır.', action:'Şimdi güncelle', run:startUpdate },
+      { type:'toggle', key:'autoUpdate', label:'Açılışta güncellemeleri denetle', desc:'Yeni sürüm varsa ana ekranda haber verir (günde en fazla birkaç kez).', dis:() => !canUpdate() },
+    ]},
     { id:'about', icon:'ℹ', title:'Hakkında', lead:'', rows:() => [
-      { type:'info', label:'Uygulama', value:() => 'Yayın ' + (APP?.version?.() || 'web') },
+      { type:'info', label:'Uygulama', value:() => 'Yayın ' + (upd.info ? upd.info.name : (APP?.version?.() || 'web')) },
       { type:'info', label:'Platform', value:platform },
       { type:'info', label:'Oynatıcı', value:() => NATIVE ? 'Media3 ExoPlayer (donanım çözücü)' : 'Tarayıcı (hls.js / mpegts.js)' },
       { type:'info', label:'Cihaz kimliği', value:() => dev.id },
@@ -3510,8 +3572,8 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     setRows = S.rows().filter(Boolean);
     const dval = r => typeof r.desc === 'function' ? r.desc() : (r.desc || '');
     $('spane').innerHTML = `<div class="sgroup"><h2>${esc(S.title)}</h2>${S.lead ? `<p class="lead">${esc(S.lead)}</p>` : ''}` + setRows.map((r, i) => {
-      const dis = r.native && !NATIVE;
-      const d = dis ? 'Yalnızca Android uygulamasında kullanılabilir.' : dval(r);
+      const dis = (r.native && !NATIVE) || (r.dis && r.dis());
+      const d = dis ? (r.dis ? 'GitHub\'da derlenen Android uygulamasında kullanılabilir.' : 'Yalnızca Android uygulamasında kullanılabilir.') : dval(r);
       let ctl = '';
       if (r.type === 'info') ctl = `<div class="val">${esc(String(r.value()))}</div>`;
       else if (r.type === 'toggle') ctl = `<button class="sw2" role="switch" data-i="${i}" aria-checked="${!!valOf(r)}" aria-label="${esc(r.label)}" ${dis?'disabled':''}></button>`;
@@ -3615,6 +3677,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   renderProfBtn();
   const afterLists = () => { runStartup(); bgLiveSync(); tryPendingOpen(); if (XT && cfg.matchesAuto && !KIDS) setTimeout(() => loadMatches().then(updateMatchTile).catch(() => {}), 4000); };
   if (XT) bootXtream().then(afterLists); else afterLists();
+  if (canUpdate() && cfg.autoUpdate && Date.now() - store.get('updCheck', 0) > 6 * 3600e3) setTimeout(() => checkUpdate(false), 6000);
   if (profiles.length > 1 && cfg.askProfile && !hashP) showProfiles();
   else if (!XT && !channels.length) setTimeout(openSource, 400);
 })();

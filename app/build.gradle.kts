@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// GitHub Actions her derlemede artan bir numara verir; uygulama içi güncelleme bununla karşılaştırır
+val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+val updateRepo = System.getenv("GITHUB_REPOSITORY") ?: ""
+val releaseKeystore = file("release.keystore")
+
 android {
     namespace = "com.yayin.player"
     compileSdk = 34
@@ -11,16 +16,27 @@ android {
         applicationId = "com.yayin.player"
         minSdk = 23          // Android 6.0 ve üzeri (çoğu TV kutusu dahil)
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = runNumber
+        versionName = "1.$runNumber"
+        buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
+    }
+
+    // Sabit imza: her sürüm aynı anahtarla imzalanır, böylece eskisinin üzerine kurulabilir
+    signingConfigs {
+        create("release") {
+            if (releaseKeystore.exists()) {
+                storeFile = releaseKeystore
+                storePassword = "yayin-imza"
+                keyAlias = "yayin"
+                keyPassword = "yayin-imza"
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Kendi imza anahtarınızı oluşturana kadar debug anahtarıyla imzalanır,
-            // böylece release APK de doğrudan kurulabilir.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystore.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -46,7 +62,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
-
 
     // Telefonla kurulum: yerel web sunucusu + QR kod
     implementation("org.nanohttpd:nanohttpd:2.3.1")

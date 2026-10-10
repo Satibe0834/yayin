@@ -68,6 +68,10 @@ class MainActivity : ComponentActivity() {
     private fun stopRemoteSoon() = web.postDelayed({ remote.stop() }, 2_000)
     private val watchNext by lazy { WatchNext(this) }
     private val images by lazy { ImageShrinker(cacheDir) }
+    private val updater by lazy { Updater(this) { evt, data -> jsEvent(evt, data) } }
+    private fun jsEvent(evt: String, data: JSONObject) = runOnUiThread {
+        if (!webDead) web.evaluateJavascript("window.yayinNative && yayinNative('$evt', $data)", null)
+    }
     private var webDead = false
     private val crashFile get() = File(filesDir, "crash.txt")
 
@@ -328,7 +332,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() { native.onPause(); if (!webDead) web.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); if (!webDead) web.onResume(); native.onResume() }
+    override fun onResume() { super.onResume(); if (!webDead) web.onResume(); native.onResume(); updater.onResume() }
     override fun onDestroy() { remote.stop(); native.release(); if (!webDead) web.destroy(); super.onDestroy() }
 
     override fun onNewIntent(intent: Intent) {
@@ -412,6 +416,10 @@ class MainActivity : ComponentActivity() {
 
         // ---- Sesli arama ----
         @JavascriptInterface fun voiceSearch() = runOnUiThread { startVoice() }
+
+        // ---- Uygulama içi güncelleme ----
+        @JavascriptInterface fun updateInfo(): String = updater.info()
+        @JavascriptInterface fun updateDownload(url: String) { updater.download(url) }
 
         // ---- Google TV "İzlemeye devam et" ----
         @JavascriptInterface fun watchNext(json: String) { watchNext.update(json) }
