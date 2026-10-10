@@ -23,6 +23,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -191,6 +193,10 @@ class NativePlayer(
                     else -> {}
                 }
             }
+
+            // Yayının çözünürlük / biçim bilgisi arayüze gitsin
+            override fun onVideoSizeChanged(videoSize: VideoSize) { emitInfo() }
+            override fun onTracksChanged(tracks: Tracks) { emitInfo() }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 emit(if (isPlaying) "playing" else "paused")
@@ -415,6 +421,27 @@ class NativePlayer(
     }
 
     private fun urlAt(i: Int) = vodItems.optJSONObject(i)?.optString("url") ?: ""
+
+    private fun emitInfo() {
+        val vs = player.videoSize
+        val vf = player.videoFormat
+        val af = player.audioFormat
+        if (vs.width <= 0 && vf == null && af == null) return
+        val o = JSONObject()
+            .put("w", if (vs.width > 0) vs.width else (vf?.width ?: 0))
+            .put("h", if (vs.height > 0) vs.height else (vf?.height ?: 0))
+        vf?.let {
+            if (it.frameRate > 0) o.put("fps", it.frameRate.toDouble())
+            o.put("vmime", it.sampleMimeType ?: "")
+            val br = if (it.bitrate > 0) it.bitrate else it.peakBitrate
+            if (br > 0) o.put("vbr", br)
+        }
+        af?.let {
+            o.put("amime", it.sampleMimeType ?: "")
+            if (it.channelCount > 0) o.put("ch", it.channelCount)
+        }
+        emit("info", o)
+    }
 
     private fun emitProgress() {
         val dur = player.duration
