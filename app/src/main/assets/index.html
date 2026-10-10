@@ -3037,14 +3037,21 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     e.preventDefault();
     if (!els.includes(a)){ els[0]?.focus(); return true; }
     const r = a.getBoundingClientRect(), cx = r.left + r.width/2, cy = r.top + r.height/2;
-    let best = null, bs = Infinity;
-    for (const el of els){
-      if (el === a) continue;
-      const q = el.getBoundingClientRect(), dx = q.left + q.width/2 - cx, dy = q.top + q.height/2 - cy;
-      if (d[0] && dx * d[0] <= 4) continue; if (d[1] && dy * d[1] <= 4) continue;
-      const sc = d[0] ? Math.abs(dx) + Math.abs(dy) * 3 : Math.abs(dy) + Math.abs(dx) * .6;
-      if (sc < bs){ bs = sc; best = el; }
-    }
+    // Önce aynı kaydırılabilir liste içinde ara (ekran dışına kaymış öğeler dahil); yoksa dışarı çık
+    const scroller = (() => { for (let p = a.parentElement; p && p !== root; p = p.parentElement){ const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight + 2) return p; } return null; })();
+    const pick = list => {
+      let best = null, bs = Infinity;
+      for (const el of list){
+        if (el === a) continue;
+        const q = el.getBoundingClientRect(), dx = q.left + q.width/2 - cx, dy = q.top + q.height/2 - cy;
+        if (d[0] && dx * d[0] <= 4) continue; if (d[1] && dy * d[1] <= 4) continue;
+        const sc = d[0] ? Math.abs(dx) + Math.abs(dy) * 3 : Math.abs(dy) + Math.abs(dx) * .6;
+        if (sc < bs){ bs = sc; best = el; }
+      }
+      return best;
+    };
+    let best = scroller ? pick(els.filter(el => scroller.contains(el))) : null;
+    if (!best) best = pick(els);
     if (best){ best.focus({ preventScroll:true }); best.scrollIntoView({ block:'nearest', inline:'nearest' }); }
     return true;
   }
@@ -3234,7 +3241,10 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const m = t.match(/^([^:|]{3,40})[:|]\s*(.+)$/); if (m && MATCH_SEP.test(m[2])){ league = m[1].trim(); name = m[2].trim(); }
     const parts = name.split(MATCH_SEP); if (parts.length < 2) return null;
     const a = parts[0].trim(), b = parts.slice(1).join(' - ').trim();
-    if (a.length < 2 || b.length < 2 || !/\p{L}/u.test(a) || !/\p{L}/u.test(b) || a.split(/\s+/).length > 6 || b.split(/\s+/).length > 8) return null;
+    if (a.length < 2 || b.length < 2 || !/\p{L}/u.test(a) || !/\p{L}/u.test(b) || a.split(/\s+/).length > 4 || b.replace(/\([^)]*\)/g, '').trim().split(/\s+/).length > 5) return null;
+    // Program adları ("Tuning TV - Classics", "… - Mehr Power aus dem Pott") maç değildir
+    const NOT_TEAM = /\b(tv|show|podcast|classics?|tuning|magazin|magazine|doku|dokumentation|reportage|talk|news|motor|auto|quiz|spezial|special|folge|episode|bölüm|aus|dem|mit|für|und|the|and|with|from|mehr|von)\b/i;
+    if (NOT_TEAM.test(a) || NOT_TEAM.test(b.replace(/\([^)]*\)/g, ''))) return null;
     return { league, name };
   }
   const myTeams = () => cfg.myTeams.split(',').map(x => nrm(x.trim())).filter(x => x.length > 1);
