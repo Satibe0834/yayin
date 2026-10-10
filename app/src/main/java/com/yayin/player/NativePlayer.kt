@@ -97,16 +97,19 @@ class NativePlayer(
     var player: ExoPlayer = buildPlayer()
         private set
 
-    private fun buildPlayer(handleAudioFocus: Boolean = true): ExoPlayer {
-        val dataSource = OkHttpDataSource.Factory(http).setUserAgent(userAgent)
-
-        // MPEG-TS: anahtar kare beklemeden görüntüye başla (kanal geçişini hızlandırır)
-        val extractors = DefaultExtractorsFactory()
+    /** Verilen User-Agent ile istek yapan kaynak fabrikası (film sunucusu belirli oynatıcı isteyebilir). */
+    private fun sourceFactory(ua: String): DefaultMediaSourceFactory {
+        val ds = OkHttpDataSource.Factory(http).setUserAgent(ua)
+        val ex = DefaultExtractorsFactory()
             .setTsExtractorFlags(
                 DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
                     DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
             )
             .setConstantBitrateSeekingEnabled(true)
+        return DefaultMediaSourceFactory(ds, ex)
+    }
+
+    private fun buildPlayer(handleAudioFocus: Boolean = true): ExoPlayer {
 
         // Önce cihazın donanım çözücüsü; desteklemediği ses biçimleri (AC3, E-AC3, DTS,
         // MP2, TrueHD...) için FFmpeg devreye girer. Çözücü açılamazsa bir sonrakine geçer.
@@ -131,7 +134,7 @@ class NativePlayer(
 
         return ExoPlayer.Builder(activity, renderers)
             .setBandwidthMeter(bandwidth)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource, extractors))
+            .setMediaSourceFactory(sourceFactory(userAgent))
             .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -218,6 +221,7 @@ class NativePlayer(
 
             override fun onPlayerError(error: PlaybackException) {
                 // Biçim tanınmadıysa: bazı sağlayıcılar .mp4/.mkv adresinden HLS yayını verir → bir kez HLS olarak dene
+                if (mode == Mode.VOD) { recoverVod(error); return }
                 if (!triedAsHls && (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
                         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
                     val item = player.currentMediaItem
@@ -377,6 +381,7 @@ class NativePlayer(
     fun playVod(json: String, index: Int, startMs: Long) {
         vodItems = try { JSONArray(json) } catch (_: Exception) { return }
         triedAsHls = false
+        vodTried.clear(); vodUa = userAgent; lastProbe = null
         if (vodItems.length() == 0) return
         mode = Mode.VOD
         val items = (0 until vodItems.length()).map { i ->
@@ -478,11 +483,110 @@ class NativePlayer(
             .put("dur", dur))
     }
 
+    // ---------------- Film / dizi açılmazsa: teşhis ve otomatik çözüm ----------------
+
+    private data class Probe(val code: Int, val type: String, val kind: String, val detail: String)
+
+    private val vodTried = mutableSetOf<String>()
+    private var vodUa = defaultUserAgent
+    private var lastProbe: Probe? = null
+    private val vlcUa = "VLC/3.0.20 LibVLC/3.0.20"
+
+    /** Adresin ilk 4 KB'ını indirip sunucunun gerçekte ne gönderdiğine bakar. */
+    private fun probe(url: String, ua: String): Probe {
+        return try {
+            val req = Request.Builder().url(url).header("User-Agent", ua).header("Range", "bytes=0-4095").build()
+            http.newCall(req).execute().use { r ->
+                val type = (r.header("Content-Type") ?: "").substringBefore(';').trim()
+                val buf = ByteArray(4096); var n = 0
+                r.body?.byteStream()?.use { inp -> while (n < buf.size) { val k = inp.read(buf, n, buf.size - n); if (k < 0) break; n += k } }
+                val b = buf.copyOf(n)
+                val head = String(b, 0, minOf(n, 512), Charsets.ISO_8859_1)
+                fun at(i: Int, vararg v: Int) = n > i + v.size - 1 && v.indices.all { (b[i + it].toInt() and 0xFF) == v[it] }
+                val kind = when {
+                    n == 0 -> "empty"
+                    head.trimStart().startsWith("#EXTM3U") -> "hls"
+                    at(0, 0x1A, 0x45, 0xDF, 0xA3) -> "mkv"
+                    n > 8 && head.substring(4, 8) == "ftyp" -> "mp4"
+                    at(0, 0x47) && (n < 189 || at(188, 0x47)) -> "ts"
+                    head.startsWith("RIFF") && head.contains("AVI") -> "avi"
+                    at(0, 0x30, 0x26, 0xB2, 0x75) -> "asf"
+                    head.startsWith("FLV") -> "flv"
+                    head.trimStart().startsWith("<") || head.contains("<html", true) -> "html"
+                    head.trimStart().startsWith("{") || head.trimStart().startsWith("[") -> "json"
+                    head.all { it.code in 9..126 } -> "text"
+                    else -> "unknown"
+                }
+                val detail = when (kind) {
+                    "html", "json", "text" -> head.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim().take(140)
+                    "unknown" -> b.take(8).joinToString(" ") { "%02X".format(it) }
+                    else -> ""
+                }
+                Probe(r.code, type, kind, detail)
+            }
+        } catch (e: Exception) {
+            Probe(0, "", "neterr", e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    private fun recoverVod(error: PlaybackException) {
+        val idx = player.currentMediaItemIndex
+        val pos = player.currentPosition.coerceAtLeast(0)
+        val url = urlAt(idx)
+        if (url.isBlank() || vodTried.size >= 3) { showVodError(error); return }
+        val ua = vodUa
+        Thread {
+            val pr = probe(url, ua)
+            main.post {
+                if (mode != Mode.VOD) return@post
+                lastProbe = pr
+                val blocked = pr.kind in setOf("html", "json", "text", "empty") || pr.code in 400..499
+                when {
+                    pr.kind == "hls" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
+                    blocked && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
+                    pr.kind == "unknown" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
+                    else -> showVodError(error)
+                }
+            }
+        }.start()
+    }
+
+    /** Film listesini yeni ayarlarla (User-Agent / HLS) aynı bölüm ve konumdan yeniden başlat. */
+    private fun restartVod(idx: Int, pos: Long, ua: String, forceHls: Boolean) {
+        val factory = sourceFactory(ua)
+        val sources = (0 until vodItems.length()).map { i ->
+            val o = vodItems.getJSONObject(i)
+            var item = mediaItem(o.getString("url")).buildUpon()
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(o.optString("title")).setSubtitle(o.optString("sub")).build())
+            if (forceHls && i == idx) item = item.setMimeType(MimeTypes.APPLICATION_M3U8)
+            factory.createMediaSource(item.build())
+        }
+        player.setMediaSources(sources, idx.coerceIn(0, sources.size - 1), pos)
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     private fun showVodError(error: PlaybackException) {
         val url = urlAt(player.currentMediaItemIndex)
+        val pr = lastProbe
+        val what = when (pr?.kind) {
+            "mkv" -> "MKV video"; "mp4" -> "MP4 video"; "ts" -> "MPEG-TS video"; "avi" -> "AVI video"; "flv" -> "FLV video"
+            "asf" -> "WMV/ASF video – bu biçim Android'de desteklenmiyor"
+            "hls" -> "HLS yayın listesi"; "html" -> "web sayfası (sunucu hata ya da erişim reddi gönderdi)"
+            "json" -> "JSON yanıtı (sunucu hata gönderdi)"; "text" -> "düz metin (sunucu hata gönderdi)"
+            "empty" -> "boş yanıt"; "neterr" -> "bağlantı kurulamadı"; "unknown" -> "tanınmayan biçim"; else -> null
+        }
+        val diag = if (pr == null) "" else buildString {
+            append("\n\nSunucu yanıtı: ")
+            append(if (pr.code > 0) "HTTP ${pr.code}" else "—")
+            if (pr.type.isNotBlank()) append(" · ").append(pr.type)
+            if (what != null) append("\n").append(what)
+            if (pr.detail.isNotBlank()) append("\n“").append(pr.detail).append("”")
+            if (vodTried.isNotEmpty()) append("\nDenenenler: ").append(vodTried.joinToString { if (it == "ua") "VLC kimliği" else "HLS" })
+        }
         AlertDialog.Builder(activity)
             .setTitle("Bu içerik oynatılamıyor")
-            .setMessage("Dosya kaldırılmış olabilir ya da görüntü biçimi bu cihazda desteklenmiyor.\n(${error.errorCodeName})")
+            .setMessage("Dosya kaldırılmış olabilir ya da biçimi bu cihazda desteklenmiyor.\n(${error.errorCodeName})$diag")
             .setPositiveButton("Harici oynatıcıda aç") { _, _ -> closeVod(); activity.openExternal(url, "") }
             .setNegativeButton("Kapat") { _, _ -> closeVod() }
             .setOnCancelListener { closeVod() }
