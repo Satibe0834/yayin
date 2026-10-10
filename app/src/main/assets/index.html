@@ -862,6 +862,10 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   if (IS_TV) document.documentElement.classList.add('tv');
   let toastT;
   function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2200); }
+  // Uygulama içinde beklenmedik bir kod hatası olursa ekranda göster (bildirmek kolay olsun)
+  const seenErr = new Set();
+  addEventListener('error', e => { const m = (e.message || '') + (e.lineno ? ' @' + e.lineno : ''); if (APP && m && !seenErr.has(m)){ seenErr.add(m); toast('Hata: ' + m.slice(0, 120)); } });
+  addEventListener('unhandledrejection', e => { const m = String(e.reason && e.reason.message || e.reason || ''); if (APP && m && !seenErr.has(m) && !/abort/i.test(m)){ seenErr.add(m); toast('Hata: ' + m.slice(0, 120)); } });
   function toggleFS(el){
     if (APP){ el.classList.toggle('fake-fs'); return; }
     document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.();
@@ -1658,7 +1662,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 
   function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   function initials(n){ return n.replace(/[^\p{L}\p{N} ]/gu,'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '•'; }
-  function logoHTML(c){ return c.logo && cfg.logos ? `<img src="${esc(c.logo)}" alt="" loading="lazy" onerror="this.replaceWith(document.createTextNode('${esc(initials(c.name))}'))">` : esc(initials(c.name)); }
+  function logoHTML(c){ return c.logo && cfg.logos ? `<img src="${esc(c.logo)}" alt="" loading="lazy" decoding="async" onerror="this.replaceWith(document.createTextNode('${esc(initials(c.name))}'))">` : esc(initials(c.name)); }
 
   // ---------- Home ----------
   if (KIDS) document.querySelector('.tile[data-cat=matches]')?.remove();
@@ -2084,7 +2088,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   function artHTML(title, logo){
     const h = hueOf(title);
     return `<div class="gen" style="background:linear-gradient(165deg,hsl(${h} 58% 40%),hsl(${(h+50)%360} 62% 13%))">${esc(title)}</div>`
-      + (logo ? `<img src="${esc(logo)}" alt="" loading="lazy" onerror="this.remove()">` : '');
+      + (logo ? `<img src="${esc(logo)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : '');
   }
 
   function seriesInfo(c){
@@ -2170,7 +2174,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   function renderMore(){
     if (vod.shown >= vod.filtered.length) return;
-    const end = Math.min(vod.filtered.length, vod.shown + 60);
+    const end = Math.min(vod.filtered.length, vod.shown + (IS_TV ? 30 : 60));
     let html = ''; for (let i = vod.shown; i < end; i++) html += posterHTML(vod.filtered[i], i, 'g');
     grid.insertAdjacentHTML('beforeend', html); vod.shown = end;
   }
