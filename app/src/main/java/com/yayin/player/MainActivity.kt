@@ -424,7 +424,11 @@ class MainActivity : ComponentActivity() {
 
         // ---- Uygulama içi güncelleme ----
         @JavascriptInterface fun updateInfo(): String = updater.info()
-        @JavascriptInterface fun updateDownload(url: String) { updater.download(url) }
+        @JavascriptInterface fun updateDownload(url: String) { updater.download(url, 0) }
+        @JavascriptInterface fun updateDownloadV(url: String, version: Int) = runOnUiThread { updater.download(url, version) }
+        @JavascriptInterface fun updateInstall() = runOnUiThread { updater.install() }
+        @JavascriptInterface fun updateCanInstall(): Boolean = updater.canInstall()
+        @JavascriptInterface fun updateRequestPermission() = runOnUiThread { updater.requestPermission() }
 
         // ---- Google TV "İzlemeye devam et" ----
         @JavascriptInterface fun watchNext(json: String) { watchNext.update(json) }
