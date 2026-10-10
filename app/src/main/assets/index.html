@@ -230,7 +230,7 @@ video{width:100%;height:100%;background:#000;display:block}
 .osd .prog-l{font:600 14px var(--ui);color:rgba(255,255,255,.85);text-shadow:0 2px 10px rgba(0,0,0,.9);margin-top:2px}
 .backdrop{margin:-20px -24px 0;aspect-ratio:16/8;background:var(--panel-2) center/cover no-repeat;position:relative}
 .backdrop::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 30%, var(--panel))}
-.backdrop + .eps-hero{margin-top:-70px;position:relative}
+.backdrop:not(.hidden) + .eps-hero{margin-top:-70px;position:relative}
 .eps-plot{color:rgba(255,255,255,.82);font-size:14px;line-height:1.6;margin:0 0 10px}
 .eps-meta{color:var(--muted);font-size:13px;margin:0 0 16px;line-height:1.6}
 .eps-meta b{color:var(--text);font-weight:600}
@@ -449,6 +449,42 @@ html.native .main,html.native .app{background:transparent}
   .vcats{flex-direction:row;overflow-x:auto;padding:0 3vw 10px}
   .vcats .cat-b{width:auto}
   .vod-wrap .vod-body{padding-left:3vw}
+}
+
+/* Film / dizi detayı: tam ekran sayfa */
+.eps{justify-content:stretch;background:var(--ink)}
+html.tp-glass .eps,html.tp-full .eps{background:var(--ink)}
+.eps .eps-panel,html.tp-glass .eps .eps-panel,html.tp-full .eps .eps-panel{--artw:clamp(150px,19vw,250px);position:relative;width:100%;max-width:none;height:100%;border:0;background:transparent;
+  backdrop-filter:none;-webkit-backdrop-filter:none;padding:calc(20px + env(safe-area-inset-top,0px)) 5vw 40px;overflow-y:auto}
+.eps .backdrop{position:fixed;inset:0;margin:0;height:auto;aspect-ratio:auto;z-index:0;background-size:cover;background-position:center top;opacity:.55}
+.eps .backdrop.blur{filter:blur(26px) saturate(1.3);transform:scale(1.15);opacity:.4}
+.eps .backdrop::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.72) 42%, rgba(0,0,0,.25) 100%), linear-gradient(180deg, transparent 45%, var(--ink) 100%)}
+.eps .eps-panel > *:not(.backdrop){position:relative;z-index:1}
+.eps .eps-close{float:none;position:absolute;top:calc(18px + env(safe-area-inset-top,0px));left:5vw;width:44px;height:44px;z-index:2}
+.eps .eps-hero > div:last-child{min-width:0;flex:1}
+.eps .eps-hero,.eps .backdrop:not(.hidden) + .eps-hero{display:flex;gap:clamp(18px,3vw,40px);align-items:flex-start;margin:72px 0 18px}
+.eps .eps-hero .art{width:var(--artw);flex:none;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.6)}
+.eps .eps-hero .art .gen{font-size:clamp(16px,1.6vw,22px)}
+.eps .eps-hero h2{font:800 clamp(26px,3.4vw,46px)/1.08 var(--display);letter-spacing:-.02em;margin:6px 0 10px;display:block}
+.eps .eps-hero p{font-size:clamp(14px,1.3vw,17px);color:rgba(255,255,255,.8)}
+.eps .eps-hero .btn{margin-top:18px;padding:12px 22px;font-size:16px;border-radius:12px}
+.eps .eps-hero #epsFav{margin-left:8px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}
+.eps .seasons,.eps #epList{margin-left:calc(var(--artw) + clamp(18px,3vw,40px));max-width:900px}
+.eps .eps-plot,.eps .eps-meta{max-width:820px}
+.eps .eps-plot{font-size:clamp(14px,1.3vw,17px);line-height:1.65;color:rgba(255,255,255,.88);margin:20px 0 12px;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.eps .eps-meta{font-size:clamp(13px,1.1vw,15px);line-height:1.7;margin:0;display:block}
+.eps .seasons{margin-bottom:10px}
+.eps .seasons .chip{padding:8px 16px;font-size:14px}
+.eps .ep{padding:12px;grid-template-columns:minmax(44px,max-content) 1fr 38px;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.06);margin-bottom:6px}
+.eps .ep:hover,.eps .ep:focus-visible{background:rgba(255,255,255,.12);border-color:#fff}
+.eps .ep .pl{width:36px;height:36px}
+@media (max-width:760px){
+  .eps .eps-panel{--artw:112px;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 30px}
+  .eps .eps-close{left:16px}
+  .eps .eps-hero{margin-top:64px;gap:16px}
+  .eps .eps-hero h2{font-size:22px}
+  .eps .eps-hero .btn{padding:10px 14px;font-size:14px;margin-top:10px}
+  .eps .seasons,.eps #epList{margin-left:0}
 }
 
 /* Yayın kalitesi rozetleri */
@@ -789,7 +825,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 
 <div class="eps hidden" id="eps">
   <div class="eps-panel" role="dialog" aria-modal="true" aria-labelledby="epsTitle">
-    <button class="back eps-close" id="epsClose" aria-label="Kapat" style="position:relative;z-index:2">✕</button>
+    <button class="back eps-close" id="epsClose" aria-label="Geri" title="Geri"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="backdrop hidden" id="epsBack"></div>
     <div class="eps-hero">
       <div class="art" id="epsArt"></div>
@@ -798,10 +834,10 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
         <p id="epsInfo"></p>
         <button class="btn primary" id="epsPlay">▶ İzle</button>
         <button class="btn hidden" id="epsFav">☆ Favorilere ekle</button>
+        <p class="eps-plot hidden" id="epsPlot"></p>
+        <p class="eps-meta hidden" id="epsMeta"></p>
       </div>
     </div>
-    <p class="eps-plot hidden" id="epsPlot"></p>
-    <p class="eps-meta hidden" id="epsMeta"></p>
     <div class="seasons" id="seasons"></div>
     <div id="epList"></div>
   </div>
@@ -2333,8 +2369,10 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     $('epsArt').innerHTML = artHTML(P.title, P.logo);
     $('epsTitle').textContent = P.title;
     $('epsInfo').textContent = P.info || '';
-    $('epsBack').classList.toggle('hidden', !P.backdrop);
-    $('epsBack').style.backgroundImage = P.backdrop ? `url("${P.backdrop.replace(/"/g,'%22')}")` : '';
+    const bd = P.backdrop || P.logo || '';
+    $('epsBack').classList.toggle('hidden', !bd);
+    $('epsBack').classList.toggle('blur', !P.backdrop && !!P.logo);
+    $('epsBack').style.backgroundImage = bd ? `url("${bd.replace(/"/g,'%22')}")` : '';
     $('epsPlot').classList.toggle('hidden', !P.plot); $('epsPlot').textContent = P.plot || '';
     const ml = P.meta || ''; $('epsMeta').classList.toggle('hidden', !ml); $('epsMeta').innerHTML = ml;
     $('epsPlay').classList.toggle('hidden', !P.play);
