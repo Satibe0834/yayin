@@ -561,6 +561,8 @@ html.tv .pill:focus{transform:scale(1.06)}
 html.no-scan .home::after{background:radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.65))}
 html.calm *,html.calm *::before,html.calm *::after{transition:none!important;animation-duration:3s!important}
 html.no-weather #place,html.no-weather #wxIcon,html.no-weather #wxTemp{display:none}
+html.no-devinfo #devCard{visibility:hidden}
+html.no-weather .clock{gap:0}
 
 /* ================= ANDROID / TV ================= */
 html.native body{background:transparent}
@@ -654,7 +656,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   </div>
 
   <footer class="foot">
-    <div class="card">
+    <div class="card" id="devCard">
       <div><b>Cihaz kimliği:</b> <span id="devId"></span></div>
       <div><b>Cihaz anahtarı:</b> <span id="devKey"></span></div>
       <div><b>Aktif liste:</b> <span id="listInfo">Yüklenmedi</span></div>
@@ -996,7 +998,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, catSort:'provider', posterCols:4, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -3481,7 +3483,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   function applyCfg(boot){
     const h = document.documentElement.classList;
-    h.toggle('no-scan', !cfg.scan); h.toggle('calm', !cfg.motion); h.toggle('no-weather', !cfg.weather);
+    h.toggle('no-scan', !cfg.scan); h.toggle('calm', !cfg.motion); h.toggle('no-weather', !cfg.homeWx); h.toggle('no-devinfo', !cfg.homeInfo);
     const fit = { fit:'contain', zoom:'cover', fill:'fill' }[cfg.aspect] || 'contain';
     v.style.objectFit = fit; $('wv').style.objectFit = fit;
     document.documentElement.style.setProperty('--cols', cfg.posterCols || 4);
@@ -3602,7 +3604,8 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'button', label:'Tema', desc:() => `Seçili: ${themeById(store.get('theme','red')).name}. Renkler, manzaralar, futbol renkleri, spor ve kendi resminiz.`, action:'Tema galerisi', run:() => openThemes('settings') },
       { type:'select', key:'clock24', label:'Saat biçimi', options:[[true,'24 saat (21:30)'],[false,'12 saat (9:30 PM)']] },
       { type:'select', key:'posterCols', num:true, label:'Film ve dizi afiş boyutu', desc:'Bir satırda kaç afiş görüneceği.', options:[[3,'Büyük (3 afiş)'],[4,'Orta (4 afiş)'],[5,'Küçük (5 afiş)'],[6,'Çok küçük (6 afiş)']] },
-      { type:'toggle', key:'weather', label:'Ana ekranda hava durumu' },
+      { type:'toggle', key:'homeInfo', label:'Ana ekranda cihaz ve hesap bilgisi', desc:'Sol alttaki cihaz kimliği, aktif liste ve bitiş tarihi kutusu.' },
+      { type:'toggle', key:'homeWx', label:'Ana ekranda hava durumu', desc:'Kapalıyken sağ altta yalnızca tarih ve saat görünür.' },
       { type:'select', key:'tempUnit', label:'Sıcaklık birimi', options:[['c','Santigrat (°C)'],['f','Fahrenhayt (°F)']], after:() => { const g = store.get('geo', null); if (g) loadWeather(g.lat, g.lon); } },
       { type:'toggle', key:'scan', label:'Ana ekran tarama çizgileri', desc:'Arka plandaki TV ekranı dokusu.' },
       { type:'toggle', key:'motion', label:'Animasyonlar', desc:'Kapatmak zayıf TV kutularında arayüzü hızlandırır.' },
