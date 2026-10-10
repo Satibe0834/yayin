@@ -9,7 +9,12 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceResponse
+import java.io.File
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import org.json.JSONObject
@@ -62,6 +67,29 @@ class MainActivity : ComponentActivity() {
     // Telefona yanıt gidebilsin diye sunucu biraz bekledikten sonra kapanır
     private fun stopRemoteSoon() = web.postDelayed({ remote.stop() }, 2_000)
     private val watchNext by lazy { WatchNext(this) }
+    private val images by lazy { ImageShrinker(cacheDir) }
+    private var webDead = false
+    private val crashFile get() = File(filesDir, "crash.txt")
+
+    private fun saveCrash(text: String) {
+        try {
+            crashFile.writeText("${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · Yayın ${BuildConfig.VERSION_NAME}\n\n$text")
+        } catch (_: Exception) {}
+    }
+
+    /** Uygulama bir önceki açılışta çöktüyse sebebini gösterir (fotoğrafı çekilip gönderilebilsin diye). */
+    private fun showLastCrash() {
+        val f = crashFile
+        if (!f.exists()) return
+        val text = try { f.readText().take(3500) } catch (_: Exception) { "" }
+        f.delete()
+        if (text.isBlank()) return
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Uygulama son açılışta kapandı")
+            .setMessage("Lütfen bu ekranın fotoğrafını çekip gönderin:\n\n$text")
+            .setPositiveButton("Tamam", null)
+            .show()
+    }
     private var pageReady = false
     private var pendingOpen: String? = null
 
@@ -82,6 +110,13 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Beklenmedik çökme olursa sebebini bir sonraki açılışta göstermek için kaydet
+        val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            saveCrash(Log.getStackTraceString(e))
+            prevHandler?.uncaughtException(t, e)
+        }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -118,6 +153,27 @@ class MainActivity : ComponentActivity() {
         web.addJavascriptInterface(Bridge(), "YayinAndroid")
 
         web.webViewClient = object : WebViewClient() {
+            // Büyük logo/afişleri küçülterek ver (az bellekli cihazlarda çökmeyi önler)
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                val url = request.url.toString()
+                if (request.method != "GET" || !(url.startsWith("http://") || url.startsWith("https://"))) return null
+                val accept = request.requestHeaders["Accept"] ?: request.requestHeaders["accept"] ?: return null
+                if (!accept.startsWith("image/")) return null
+                return images.load(url)
+            }
+
+            // Görüntü motoru çökerse uygulamayı kapatmak yerine yeniden başlat
+            @androidx.annotation.RequiresApi(26)
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                saveCrash("Görüntü motoru kapandı (WebView). Çöktü: ${detail.didCrash()}" +
+                    if (Build.VERSION.SDK_INT >= 26) ", öncelik: ${detail.rendererPriorityAtExit()}" else "")
+                webDead = true
+                root.removeView(view)
+                view.destroy()
+                recreate()
+                return true
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 pageReady = true
                 pendingOpen?.let { u -> pendingOpen = null; js("window.yayinOpen && yayinOpen(${JSONObject.quote(u)})") }
@@ -196,6 +252,7 @@ class MainActivity : ComponentActivity() {
             web.loadUrl("file:///android_asset/index.html")
         }
         handleDeepLink(intent)
+        showLastCrash()
     }
 
     // Kumandadaki özel tuşlar (kanal +/-, oynat/duraklat, ileri/geri sar, menü)
@@ -267,12 +324,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        web.saveState(outState)
+        if (!webDead) web.saveState(outState)
     }
 
-    override fun onPause() { native.onPause(); web.onPause(); super.onPause() }
-    override fun onResume() { super.onResume(); web.onResume(); native.onResume() }
-    override fun onDestroy() { remote.stop(); native.release(); web.destroy(); super.onDestroy() }
+    override fun onPause() { native.onPause(); if (!webDead) web.onPause(); super.onPause() }
+    override fun onResume() { super.onResume(); if (!webDead) web.onResume(); native.onResume() }
+    override fun onDestroy() { remote.stop(); native.release(); if (!webDead) web.destroy(); super.onDestroy() }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
