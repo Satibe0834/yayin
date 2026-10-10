@@ -251,7 +251,17 @@ video{width:100%;height:100%;background:#000;display:block}
 #bgv{position:fixed;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;background:#000;display:none;pointer-events:none}
 html.live-bg #bgLayer{display:none}
 html.live-bg:not(.native) #bgv{display:block}
-html.player-on #bgLayer,html.player-on #bgv{display:none!important}
+html.player-on:not(.live-tp) #bgLayer,html.player-on #bgv{display:none!important}
+/* Şeffaf temalarda Canlı TV: tema görseli panellerin arkasında, video alanında ise "pencere" açık */
+html.live-tp .app,html.live-tp .main{background:transparent}
+html.live-tp .app{position:relative;z-index:1}
+html.live-tp.tp-glass .cats,html.live-tp.tp-glass .side,html.live-tp.tp-glass .bar,html.live-tp.tp-glass .epgp,html.live-tp.tp-glass .keys{background:rgba(0,0,0,.45);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+html.live-tp.tp-full .cats,html.live-tp.tp-full .side,html.live-tp.tp-full .bar,html.live-tp.tp-full .epgp,html.live-tp.tp-full .keys{background:rgba(0,0,0,.2)}
+html.live-tp .cats,html.live-tp .side{border-color:rgba(255,255,255,.12)}
+html.live-tp .side .search input{background:rgba(0,0,0,.3)}
+html.live-tp .ch:hover{background:rgba(255,255,255,.08)}
+html.live-tp .ch.active{background:rgba(255,255,255,.1)}
+html.tp-full .vod-wrap .vcats,html.tp-full .vod-head{text-shadow:0 1px 4px rgba(0,0,0,.8)}
 /* Şeffaflık */
 html.tp-glass .vod,html.tp-glass .settings,html.tp-glass .themes{background:rgba(0,0,0,.5)}
 html.tp-full .vod,html.tp-full .settings,html.tp-full .themes{background:rgba(0,0,0,.14)}
@@ -1329,6 +1339,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   function applyTp(){
     const h = document.documentElement.classList;
     h.toggle('tp-glass', cfg.tp === 'glass'); h.toggle('tp-full', cfg.tp === 'full');
+    if (typeof syncLiveTp === 'function' && themeBooted) syncLiveTp();
   }
 
   // ---- Hareketli arka plan ----
@@ -2679,6 +2690,20 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       if (i >= 0 && i > cards.length - 12) renderMore();
     }
   }
+
+  // ---------- Şeffaf temada Canlı TV: video alanına pencere aç ----------
+  function syncLiveTp(){
+    const h = document.documentElement, P = $('player');
+    const on = cfg.tp !== 'off' && !P.classList.contains('hidden') && !P.classList.contains('nosidebar') && !h.classList.contains('live-bg');
+    h.classList.toggle('live-tp', on);
+    const bl = $('bgLayer');
+    if (!on){ bl.style.clipPath = ''; return; }
+    const r = $('stage').getBoundingClientRect();
+    bl.style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${r.left}px ${r.top}px, ${r.right}px ${r.top}px, ${r.right}px ${r.bottom}px, ${r.left}px ${r.bottom}px, ${r.left}px ${r.top}px)`;
+  }
+  new MutationObserver(() => requestAnimationFrame(syncLiveTp)).observe($('player'), { attributes:true, attributeFilter:['class'] });
+  new ResizeObserver(() => requestAnimationFrame(syncLiveTp)).observe($('stage'));
+  addEventListener('resize', () => requestAnimationFrame(syncLiveTp));
 
   // ---------- Yerel oynatıcı (Android ExoPlayer) ----------
   function syncRect(){
