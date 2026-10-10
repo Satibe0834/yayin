@@ -396,6 +396,8 @@ html:not(.native) .pv{background:#000}
 .mob-back{display:none}
 .side .search{margin-top:16px}
 .main{background:var(--ink)}
+/* Uygulamada video arayüzün ARKASINDA oynar: video alanının arkasındaki her katman şeffaf olmalı */
+html.native .main,html.native .app{background:transparent}
 .app:not(.nosidebar) .stage{flex:none;aspect-ratio:16/9;min-height:0}
 .app.nosidebar{grid-template-columns:1fr}
 .app.nosidebar .cats,.app.nosidebar .side,.app.nosidebar .epgp,.app.nosidebar .keys,.app.nosidebar .bar{display:none}
