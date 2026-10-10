@@ -805,7 +805,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       <input id="vq" type="search" placeholder="Film ara" aria-label="Ara">
     </div>
     <select class="vsort" id="vsort" aria-label="Sıralama">
-      <option value="">Varsayılan sıra</option><option value="added">Son eklenenler</option>
+      <option value="">Sağlayıcının sırası</option><option value="added">Son eklenenler</option>
       <option value="az">A'dan Z'ye</option><option value="rate">En yüksek puan</option>
     </select>
   </header>
@@ -975,7 +975,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, catSort:'provider', failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -1570,6 +1570,21 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Xtream Codes ----------
   let XT = store.get('xtream', null);      // {server, user, pass, fmt}
   let xinfo = null, xLoading = false;
+  // Sağlayıcının kategori sırası (Xtream'de API sırası, M3U'da listedeki ilk görünme sırası)
+  let catOrder = {}; const orderCache = new Map();
+  function orderMap(kind){
+    const sig = kind + ':' + channels.length + ':' + (XT ? 'x' : 'm');
+    if (orderCache.has(sig)) return orderCache.get(sig);
+    const m = new Map(), add = (name, i) => { if (name == null) return; if (!m.has(name)) m.set(name, i); const c = cleanGroup(name); if (!m.has(c)) m.set(c, i); };
+    if (XT && catOrder[kind]) catOrder[kind].forEach(add);
+    else { let i = 0; channels.forEach(c => { if (c.kind === kind && !m.has(c.group)) add(c.group, i++); }); }
+    orderCache.set(sig, m); return m;
+  }
+  function sortGroups(kind, names){
+    if (cfg.catSort === 'az') return names.sort((a, b) => a.localeCompare(b, 'tr'));
+    const o = orderMap(kind), big = 1e9;
+    return names.sort((a, b) => ((o.has(a) ? o.get(a) : big) - (o.has(b) ? o.get(b) : big)) || a.localeCompare(b, 'tr'));
+  }
   let meta = store.get('meta', {});        // izlenen içeriklerin kısa bilgisi (devam et rafı için)
   function normServer(u){ u = u.trim().replace(/\/+$/,'').replace(/\/player_api\.php.*$/,''); if (!/^https?:\/\//i.test(u)) u = 'http://' + u; return u; }
   function xurl(params){ return `${XT.server}/player_api.php?username=${encodeURIComponent(XT.user)}&password=${encodeURIComponent(XT.pass)}${params ? '&' + params : ''}`; }
@@ -1606,6 +1621,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       const res = await Promise.all(steps.map(([act, label]) => xapi('action=' + act).catch(() => []).then(r => { onStep?.(`${label} alındı (${++done}/${steps.length})`); return arr(r); })));
       const [lc, ls, vc, vs, sc, ss] = res;
       const cat = list => Object.fromEntries(list.map(c => [String(c.category_id), c.category_name]));
+      catOrder = { live:lc.map(c => c.category_name), movie:vc.map(c => c.category_name), series:sc.map(c => c.category_name) }; orderCache.clear();
       const lcm = cat(lc), vcm = cat(vc), scm = cat(sc);
       const lorder = Object.fromEntries(lc.map((c,i) => [String(c.category_id), i]));
       ls.sort((a,b) => (lorder[a.category_id] ?? 999) - (lorder[b.category_id] ?? 999) || (+a.num||0) - (+b.num||0));
@@ -1891,7 +1907,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   const recentLive = () => recent.map(findItem).filter(x => x && x.kind === 'live' && allowed('live', x.group));
   function fillGroups(){
     const counts = new Map(); pool.forEach(c => counts.set(c.group, (counts.get(c.group) || 0) + 1));
-    const gs = [...counts.keys()];
+    const gs = sortGroups('live', [...counts.keys()]);
     liveCats = [{ id:'__all', name:'Tümü', n:pool.length }, { id:'__fav', name:'★ Favoriler', n:pool.filter(c => favs.has(favKey(c))).length }, { id:'__recent', name:'🕘 Son izlenenler', n:recentLive().length },
       ...gs.map(g => ({ id:g, name:g, n:counts.get(g) }))];
     $('clist').innerHTML = liveCats.map((k, i) => `<button class="cat-b" data-c="${i}" aria-current="${k.id === liveCat}"><span>${esc(k.name)}</span><span class="n">${k.n}</span></button>`).join('');
@@ -2259,7 +2275,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   const epLabel = x => `S${x.s} B${x.e}`;
 
   function openVod(cat){
-    vod.cat = cat; vod.group = ''; vod.q = ''; $('vq').value = ''; $('vsort').value = XT ? 'added' : '';
+    vod.cat = cat; vod.group = ''; vod.q = ''; $('vq').value = ''; $('vsort').value = '';
     $('vsort').querySelector('[value=added]').hidden = !XT; $('vsort').querySelector('[value=rate]').hidden = !XT;
     $('vq').placeholder = cat === 'movie' ? 'Film ara' : 'Dizi ara';
     vod.items = cat === 'movie' ? channels.filter(c => c.kind === 'movie' && allowed('movie', c.group)) : getSeries().filter(S => allowed('series', S.group));
@@ -2281,7 +2297,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   function renderVodCats(){
     const counts = new Map(); vod.items.forEach(it => { const g = itemGroup(it); counts.set(g, (counts.get(g) || 0) + 1); });
     vodCats = [{ id:'__all', name:'Tümü', n:vod.items.length }, { id:'__fav', name:'★ Favoriler', n:vod.items.filter(it => favs.has(vodFavKey(it))).length },
-      { id:'__cont', name:'▶ İzlemeye devam et', n:contAsItems().length }, ...[...counts.keys()].map(g => ({ id:g, name:g, n:counts.get(g) }))];
+      { id:'__cont', name:'▶ İzlemeye devam et', n:contAsItems().length }, ...sortGroups(vod.cat, [...counts.keys()]).map(g => ({ id:g, name:g, n:counts.get(g) }))];
     $('vcats').innerHTML = vodCats.map((k, i) => `<button class="cat-b" data-v="${i}" aria-current="${k.id === vod.group}"><span>${esc(k.name)}</span><span class="n">${k.n}</span></button>`).join('');
   }
   function selectVodCat(id){
@@ -3508,6 +3524,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
         set:v => { if (v !== 'on'){ setSleep(+v); toast(+v ? `Uyku zamanlayıcı ${v} dakikaya ayarlandı` : 'Uyku zamanlayıcı kapatıldı'); } } },
     ]},
     { id:'live', icon:'📺', title:'Canlı TV ve EPG', lead:'Kanal listesi ve yayın akışı.', rows:() => [
+      { type:'select', key:'catSort', label:'Kategori sırası', desc:'Canlı TV, film ve dizi kategorileri için.', options:[['provider','Sağlayıcının sırası'],['az','Alfabetik']] },
       { type:'select', key:'liveSort', label:'Kanal sırası', options:[['list','Listedeki sıra'],['az','Alfabetik'],['fav','Favoriler en üstte']] },
       { type:'toggle', key:'epgList', label:'Listede yayın akışını göster', desc:'Her kanalın altında o an yayındaki program (Xtream).' },
       { type:'select', key:'epgShift', num:true, label:'Yayın akışı saat farkı', desc:'Program saatleri kaymışsa düzeltin.', options:[-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6].map(n => [n, n === 0 ? 'Yok' : (n > 0 ? '+' : '') + n + ' saat']),
@@ -3655,7 +3672,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const m = new Map();
     if (kind === 'series') (XT ? seriesAll || [] : getSeries()).forEach(S => m.set(S.group, (m.get(S.group) || 0) + 1));
     else channels.forEach(c => { if (c.kind === kind) m.set(c.group, (m.get(c.group) || 0) + 1); });
-    return [...m].map(([name, n]) => ({ name, n }));
+    return sortGroups(kind, [...m.keys()]).map(name => ({ name, n:m.get(name) }));
   }
   function openCats(kind){ catView = { kind, q:'' }; renderCats(); requestAnimationFrame(() => $('spane').querySelector('[data-ck]')?.focus()); }
   function renderCats(){
