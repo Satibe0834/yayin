@@ -499,6 +499,15 @@ html.tp-glass .eps,html.tp-full .eps{background:var(--ink)}
   .eps .seasons,.eps #epList{margin-left:0}
 }
 
+/* TV kumandası: seçili düğme her zaman belirgin görünsün */
+html.tv .round:focus,html.tv .pill:focus,html.tv .back:focus,html.tv .btn:focus,html.tv .chip:focus,html.tv .sw2:focus,
+html.tv .dot:focus,html.tv .mic:focus,html.tv select:focus,html.tv input:focus,html.tv .snav-b:focus,html.tv .ep:focus,html.tv .s-ch:focus,html.tv .pcard:focus .pav{
+  outline:3px solid #fff!important;outline-offset:3px;box-shadow:0 0 0 7px rgba(0,0,0,.5)}
+html.tv .round:focus{transform:scale(1.18);z-index:2;position:relative}
+html.tv .pill:focus{transform:scale(1.06)}
+.round,.pill{transition:transform .15s ease}
+.round:focus-visible,.pill:focus-visible{outline:3px solid #fff;outline-offset:3px}
+
 /* Yayın kalitesi rozetleri */
 .qb{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font:800 11px/1.5 var(--ui);color:var(--text);background:rgba(255,255,255,.06);white-space:nowrap}
 .qb.q{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff)}
