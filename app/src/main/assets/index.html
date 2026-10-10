@@ -1569,7 +1569,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 
   // ---------- Xtream Codes ----------
   let XT = store.get('xtream', null);      // {server, user, pass, fmt}
-  let xinfo = null, xLoading = false;
+  let xinfo = null, xLoading = false, xFailed = [];
   // Sağlayıcının kategori sırası (Xtream'de API sırası, M3U'da listedeki ilk görünme sırası)
   let catOrder = {}; const orderCache = new Map();
   function orderMap(kind){
@@ -1588,8 +1588,8 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   let meta = store.get('meta', {});        // izlenen içeriklerin kısa bilgisi (devam et rafı için)
   function normServer(u){ u = u.trim().replace(/\/+$/,'').replace(/\/player_api\.php.*$/,''); if (!/^https?:\/\//i.test(u)) u = 'http://' + u; return u; }
   function xurl(params){ return `${XT.server}/player_api.php?username=${encodeURIComponent(XT.user)}&password=${encodeURIComponent(XT.pass)}${params ? '&' + params : ''}`; }
-  async function xapi(params){
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 25000);
+  async function xapi(params, timeoutMs = 25000){
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const r = await fetch(xurl(params), { signal: ctl.signal });
       if (!r.ok) throw new Error('Sunucu ' + r.status + ' hatası verdi');
@@ -1615,11 +1615,20 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       if (!a || !a.user_info || String(a.user_info.auth) === '0') throw new Error('Kullanıcı adı veya şifre hatalı.');
       xinfo = a.user_info;
       if (xinfo.status && xinfo.status !== 'Active') throw new Error(`Hesap durumu: ${xinfo.status}. Servis sağlayıcınızla görüşün.`);
-      const steps = [['get_live_categories','Kanal kategorileri'],['get_live_streams','Canlı kanallar'],['get_vod_categories','Film kategorileri'],
-                     ['get_vod_streams','Filmler'],['get_series_categories','Dizi kategorileri'],['get_series','Diziler']];
-      let done = 0;
-      const res = await Promise.all(steps.map(([act, label]) => xapi('action=' + act).catch(() => []).then(r => { onStep?.(`${label} alındı (${++done}/${steps.length})`); return arr(r); })));
-      const [lc, ls, vc, vs, sc, ss] = res;
+      // Önce küçük kategori listeleri (birlikte), sonra büyük listeler SIRAYLA: hepsi aynı anda inince
+      // yavaş Wi-Fi'da büyük film listesi süre sınırına takılıp boş geliyordu.
+      xFailed = [];
+      const get = async (act, label, timeout) => {
+        for (let attempt = 1; attempt <= 2; attempt++){
+          try { return arr(await xapi('action=' + act, timeout)); }
+          catch (e){ if (attempt === 2){ xFailed.push(label); return []; } onStep?.(`${label} tekrar deneniyor…`); await new Promise(r => setTimeout(r, 1500)); }
+        }
+      };
+      onStep?.('Kategoriler alınıyor…');
+      const [lc, vc, sc] = await Promise.all([get('get_live_categories','Kanal kategorileri', 30000), get('get_vod_categories','Film kategorileri', 30000), get('get_series_categories','Dizi kategorileri', 30000)]);
+      onStep?.('Canlı kanallar alınıyor (1/3)…');   const ls = await get('get_live_streams', 'Canlı kanallar', 120000);
+      onStep?.('Filmler alınıyor (2/3)…');          const vs = await get('get_vod_streams', 'Filmler', 180000);
+      onStep?.('Diziler alınıyor (3/3)…');          const ss = await get('get_series', 'Diziler', 180000);
       const cat = list => Object.fromEntries(list.map(c => [String(c.category_id), c.category_name]));
       catOrder = { live:lc.map(c => c.category_name), movie:vc.map(c => c.category_name), series:sc.map(c => c.category_name) }; orderCache.clear();
       const lcm = cat(lc), vcm = cat(vc), scm = cat(sc);
@@ -1832,6 +1841,11 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const ns = (XT ? (seriesAll || []) : (channels.length ? getSeries() : [])).filter(S => allowed('series', S.group)).length;
     document.querySelector('[data-count=series]').textContent = ns ? `${ns} dizi` : '';
     if (xLoading){ ['live','movie','series'].forEach(k => document.querySelector(`[data-count=${k}]`).textContent = 'Yükleniyor…'); }
+    else if (XT && xFailed.length){
+      if (xFailed.includes('Canlı kanallar')) document.querySelector('[data-count=live]').textContent = 'Yüklenemedi – ↻ ile yenile';
+      if (xFailed.includes('Filmler')) document.querySelector('[data-count=movie]').textContent = 'Yüklenemedi – ↻ ile yenile';
+      if (xFailed.includes('Diziler')) document.querySelector('[data-count=series]').textContent = 'Yüklenemedi – ↻ ile yenile';
+    }
     $('listInfo').textContent = XT ? `${XT.server.replace(/^https?:\/\//,'')} · ${xLoading ? 'yükleniyor' : channels.length + ns + ' içerik'}`
       : channels.length ? `${store.get('listName','Özel liste')} · ${channels.length} içerik` : 'Yüklenmedi';
     const exp = xinfo && xinfo.exp_date;
@@ -2153,6 +2167,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       store.set('xtream', XT); store.set('channels', []); store.set('listName', XT.server.replace(/^https?:\/\//,''));
       dlg.close(); updateHome(); selectTile(0);
       toast(`${channels.filter(c=>c.kind==='live').length} kanal, ${channels.filter(c=>c.kind==='movie').length} film, ${seriesAll.length} dizi yüklendi`);
+      if (xFailed.length) setTimeout(() => toast(`${xFailed.join(', ')} sunucudan alınamadı. Sağ üstteki ↻ ile tekrar deneyin.`), 2500);
       matchData = null; if (cfg.matchesAuto && !KIDS){ updateMatchTile(); loadMatches(true).then(updateMatchTile).catch(() => {}); }
     } catch (e){
       XT = prev; $('xMsg').style.color = 'var(--live)'; $('xMsg').textContent = e.message;
@@ -3721,6 +3736,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const p = loadXtream(); updateHome(); $('hRefresh').textContent = '…';
     try { await p; } catch (e){ toast('Xtream: ' + e.message); return; }
     finally { $('hRefresh').textContent = '↻'; updateHome(); }
+    if (xFailed.length) toast(`${xFailed.join(', ')} sunucudan alınamadı. Sağ üstteki ↻ ile tekrar deneyin.`);
   }
   function runStartup(){
     if (cfg.startup === 'home' || !channels.length) return;
