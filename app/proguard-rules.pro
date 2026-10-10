@@ -1,0 +1,1 @@
+-keepclassmembers class com.yayin.player.MainActivity$Bridge { @android.webkit.JavascriptInterface <methods>; }
