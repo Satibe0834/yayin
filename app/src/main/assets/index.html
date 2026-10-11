@@ -2621,7 +2621,12 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
         ${x.pct > 0.02 ? `<div class="eb"><i style="width:${x.pct*100}%"></i></div>` : ''}</span><span class="pl">▶</span></button>`).join('')
       : (P.empty ? `<p class="eps-meta">${esc(P.empty)}</p>` : '');
   }
-  $('seasons').onclick = e => { const b = e.target.closest('.chip'); if (b){ panelChip = b.dataset.c; renderPanelList(); } };
+  $('seasons').onclick = e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    panelChip = b.dataset.c; renderPanelList();
+    // Sezon seçilince o sezonun ilk bölümüne geç (yeniden çizilen düğmede odak kaybolmasın)
+    requestAnimationFrame(() => { const ep = $('epList').querySelector('.ep'); (ep || $('seasons').querySelector('[aria-pressed="true"]'))?.focus(); ep?.scrollIntoView({ block:'nearest' }); });
+  };
   $('epList').onclick = e => { const b = e.target.closest('.ep'); if (b) panel._items[+b.dataset.i].go(); };
   function refreshPanel(){ if (panel && panel.refresh) panel.refresh(); }
   function closeEps(){ $('eps').classList.add('hidden'); panel = null; lastFocus?.focus({preventScroll:true}); }
@@ -2819,10 +2824,27 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   function epsKey(e){
     if (e.key === 'Escape' || e.key === 'Backspace'){ e.preventDefault(); closeEps(); return; }
-    const items = [$('epsPlay'), $('epsFav'), ...document.querySelectorAll('#seasons .chip, #epList .ep')].filter(el => !el.classList.contains('hidden'));
-    const i = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowRight'){ e.preventDefault(); items[Math.min(items.length-1, i+1)]?.focus(); }
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft'){ e.preventDefault(); items[Math.max(0, i-1)]?.focus(); }
+    const k = e.key; if (!k.startsWith('Arrow')) return;
+    e.preventDefault();
+    const a = document.activeElement;
+    const top = [$('epsPlay'), $('epsFav')].filter(el => !el.classList.contains('hidden'));
+    const chips = [...document.querySelectorAll('#seasons .chip')];
+    const eps = [...document.querySelectorAll('#epList .ep')];
+    const curChip = () => chips.find(c => c.getAttribute('aria-pressed') === 'true') || chips[0];
+    const go = el => { if (el){ el.focus(); el.scrollIntoView({ block:'nearest' }); } };
+    if (top.includes(a)){
+      const i = top.indexOf(a);
+      if (k === 'ArrowRight') go(top[i + 1]); else if (k === 'ArrowLeft') go(top[i - 1]);
+      else if (k === 'ArrowDown') go(curChip() || eps[0]);
+    } else if (chips.includes(a)){
+      const i = chips.indexOf(a);
+      if (k === 'ArrowRight') go(chips[i + 1]); else if (k === 'ArrowLeft') go(chips[i - 1]);
+      else if (k === 'ArrowDown') go(eps[0]); else if (k === 'ArrowUp') go(top[0]);
+    } else if (eps.includes(a)){
+      const i = eps.indexOf(a);
+      if (k === 'ArrowDown') go(eps[i + 1]);
+      else if (k === 'ArrowUp') go(i > 0 ? eps[i - 1] : (curChip() || top[0]));
+    } else go(top[0] || curChip() || eps[0]);
   }
   function vodKey(e){
     const a = document.activeElement, k = e.key;
