@@ -169,6 +169,7 @@ select,input{flex:1;min-width:0;background:var(--p1);border:1px solid var(--line
     if (!st) return;
     if (st.lang) applyLang(st.lang);
     if (st.accent) document.documentElement.style.setProperty('--acc', st.accent);
+    if (st.vol != null) $('hdr').textContent = st.muted || !st.vol ? '🔇' : '🔊 ' + st.vol + '%';
     const c = st.cur;
     if (st.vod){ $('nT').textContent = st.vod.title || ''; $('nS').textContent = st.vod.sub || ''; $('nLg').innerHTML = '🎬'; }
     else if (c){
