@@ -15,6 +15,9 @@ body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0)}
 button{font:inherit;color:inherit;border:0;cursor:pointer}
 header{padding:12px 14px 8px;display:flex;align-items:center;gap:10px}
 header b{font-size:20px;letter-spacing:-.02em}
+@font-face{font-family:'PersetLogo';src:url(data:font/woff;base64,d09GRgABAAAAAAVwAAwAAAAABjQABAEGAAAAAAAAAAAAAAAAAAAAAAAAAABHUE9TAAAFIAAAACAAAAAgRHZMdUdTVUIAAAVAAAAALgAAADAfSCdrT1MvMgAAA6wAAABKAAAAYFrbYGFjbWFwAAAD+AAAAEcAAABcAWoBlWdseWYAAAEcAAAB3gAAAgT5EfXNaGVhZAAAAzAAAAA2AAAANhpRJHFoaGVhAAADjAAAACAAAAAkC/wBYWhtdHgAAANoAAAAJAAAACQT1wD3bG9jYQAAAxwAAAAUAAAAFAHyAodtYXhwAAAC/AAAACAAAAAgAIsBJW5hbWUAAARAAAAAygAAAYIf9zbOcG9zdAAABQwAAAATAAAAIP+4ADJ4nC2Rz0sbURDH582GrIKEtsn+SFET8+oGEt3Gfft2NZEQ0tW0YH+rkZYc26Q9FCl68FART3oJeOup7bUs1F6agoccvfRkC6Un6V/Qc4VGOwsyzGEeX77zme8DhCoArmAfRkADgHicc41fnXB0XYt70rVoFLgyu7H6MmTa8kb5tFSaabXY+2fVf9gvP6+v2YWC/RkYmOTjk48KwMiBSqJ/FB5hf3/wDeU+PcMwaU5IE6dB4YpIJvHk7OdZ79Mh9gd16j94jSQwevEXl9AjzwwxqRO6LhxfJJDnLEu6nicivDzB5eIqLinnb2KVYi3dS9x5FTzaud3Yefxwu3E4P12sqGzouut7/pqzuNts7i4G28vTU65jEwvdzd6iS3cDeEIjK42ghcbUJ/7NWi0M2YX84i+cD9BuRexZYlKIqQCgW1ZeRExRQHkbL5EMbkVEWko3xtFIUZS/XtdjH5USz3Jndv5BWbYbL7aG38WKfDwrvOq9CvPbwZDT9MZupFOmkUhkbs2V7tud1bGckTLNkSuZhfLM3aloO/0N28QeJAEmidWSkkshhUbgtE+wzWarEwTh+ro5enDwtH3a3dvr/k7rl5l30I4yn0yKKHU2t9U7/nH89QPrDr6j/R8lsHF4AAAAAQAAAAkAkAAMAHQABgABAAIAHgAGAAAAZAAAAAMAAgAAAAAAJAA2AEoAfACUANMA8AECAAEAAAAEAQbsJntiXw889QADA+gAAAAA2KSpyAAAAADbFjbJ/c79ogmtBFQAAQAHAAIAAAAAAAAB9AAAAnAAPgJPABgC2gAJAmgAHAGsAD4CLgAgAZYAFQJyAAl4nGNgZGBgkfq3iCGFc+7fcz8lONcyAEVQACcAnhMGZnicY2BhzmTaw8DKwMDUxRTBwMDgDaEZ4xiMGP2AfAYOBjhgZEACniFu/gwLGAIYylik/i1iSGHJZyqGqWHSYzoIpBQYWAD7HgruAAB4nGNgYGBiYGBgBmIRIMkIplkYPIA0HwMHUI6NIYAhhCGMIZWhhKHs/3+gOIxfBOL/3/h/3f+1/+f/n/x/Elg3EgAAZZgS8wB4nHWOuw4BURRF1zCehSiVSgqPyESEColERaFSehOvzJjC7/gCpa/yDfZcI0LIzc3dZ5+1z7lAgjFRLDsFXHSf2iKj6qkjJLmGOkqdW6htctxDHSNtxUMdJ2dl6XLgyBmXNUtWnMhTo2punpGcud6hoY5i9nimduVs1JuaRBtf70qea/oFM+mkhEeTis5S2YDwmVBW6sBObuAtpH3NnSl7lve5q/hVd1Rtxfb1tx4DWj9+92KCnqNtVR1Hext/yTf1SZRexAMvqjjkAAB4nGNgZgCD/1sZjBiwAAAswgHqAAABAAAACgAcAB4AAURGTFQACAAEAAAAAP//AAAAAAAAeJxjYGRgYOBi0GHQY2B2cfMJYRBJSS0zYpADkokMcgwsQFmG//8Z4AAApTwG9gAA) format('woff');font-weight:700;font-display:block}
+.plogo{display:inline-flex;align-items:center;gap:.14em;font-family:'PersetLogo',system-ui,sans-serif;font-weight:700;font-size:22px;letter-spacing:-.015em;line-height:1;color:#fff}
+.plogo .tv{display:inline-block;background:#592CE3;color:#fff;font-size:.6em;padding:.1em .32em .16em;border-radius:.24em;line-height:1;transform:translateY(.1em)}
 .dot{width:9px;height:9px;border-radius:50%;background:#666;margin-left:auto}
 .dot.on{background:#2ecc71;box-shadow:0 0 0 4px rgba(46,204,113,.2)}
 .now{margin:0 12px 8px;background:var(--p1);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:center}
@@ -88,7 +91,7 @@ select,input{flex:1;min-width:0;background:var(--p1);border:1px solid var(--line
 </style>
 </head>
 <body>
-<header><b>📺 PersetTV</b><span id="hdr" style="color:var(--mu);font-size:13px"></span><i class="dot" id="dot"></i></header>
+<header><span class="plogo" aria-label="PersetTV">Perset<span class="tv">tv</span></span><span id="hdr" style="color:var(--mu);font-size:13px"></span><i class="dot" id="dot"></i></header>
 <div class="now" id="now">
   <div class="lg" id="nLg">📺</div>
   <div style="min-width:0"><div class="t" id="nT">…</div><div class="s" id="nS"></div></div>
