@@ -30,6 +30,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -137,7 +138,7 @@ class NativePlayer(
         // Bağlantı hızı ölçülene kadar düşük kaliteyle başlamasın: başlangıç tahmini yüksek
         val bandwidth = DefaultBandwidthMeter.Builder(activity).setInitialBitrateEstimate(30_000_000L).build()
 
-        return ExoPlayer.Builder(activity, renderers)
+        val built = ExoPlayer.Builder(activity, renderers)
             .setBandwidthMeter(bandwidth)
             .setMediaSourceFactory(sourceFactory(userAgent))
             .setLoadControl(loadControl)
@@ -150,6 +151,25 @@ class NativePlayer(
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
+        if (handleAudioFocus) mainFfmpegIndex = renderers.ffmpegIndex
+        return built
+    }
+
+    private var mainFfmpegIndex = -1
+
+    /** Yalnızca bu kanal için FFmpeg ses çözücüsünü kapat/aç (oynatıcıyı yeniden kurmadan). */
+    private fun setFfmpegForChannel(off: Boolean) {
+        val i = mainFfmpegIndex; if (i < 0) return
+        val ts = player.trackSelector as? DefaultTrackSelector ?: return
+        try { ts.setParameters(ts.buildUponParameters().setRendererDisabled(i, off)) } catch (_: Exception) {}
+    }
+
+    /** JS'ten: kanalı belirli bir yöntemle aç (noFfmpeg: bu kanalda FFmpeg'siz dene). */
+    fun playLiveEx(url: String, noFfmpeg: Boolean, retry: Boolean) {
+        setFfmpegForChannel(noFfmpeg)
+        // Kurtarma denemesi: aynı kanal takılıp kaldıysa "zaten açık" sayılmasın, baştan yükle
+        if (retry && mode == Mode.LIVE && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) player.stop()
+        playLive(url)
     }
 
     private val titleText = TextView(activity).apply {
@@ -286,7 +306,7 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         quality = o.optString("quality", "max")
-        tsEnabled = o.optBoolean("timeshift", false)
+        tsEnabled = false   // Canlı geri sarma kaldırıldı (kanal açılışını yavaşlatıyordu)
         tsKeepMin = o.optInt("tsMinutes", 30).coerceIn(5, 120)
         subLang = o.optString("subLang", "")
         subScale = when (o.optString("subSize", "normal")) { "small" -> 0.8f; "large" -> 1.3f; "xlarge" -> 1.6f; else -> 1f }
@@ -680,6 +700,11 @@ class NativePlayer(
     private fun showVodError(error: PlaybackException) {
         val url = urlAt(player.currentMediaItemIndex)
         val pr = lastProbe
+        try {
+            val o = vodItems.optJSONObject(player.currentMediaItemIndex)
+            emit("vodErr", JSONObject().put("code", error.errorCodeName).put("title", o?.optString("title") ?: "")
+                .put("sub", o?.optString("sub") ?: "").put("probe", pr?.kind ?: "").put("http", pr?.code ?: 0))
+        } catch (_: Exception) {}
         val what = when (pr?.kind) {
             "mkv" -> "MKV video"; "mp4" -> "MP4 video"; "ts" -> "MPEG-TS video"; "avi" -> "AVI video"; "flv" -> "FLV video"
             "asf" -> "WMV/ASF video – bu biçim Android'de desteklenmiyor"

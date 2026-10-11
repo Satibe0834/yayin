@@ -109,6 +109,9 @@ class MainActivity : ComponentActivity() {
         val text = try { f.readText().take(3500) } catch (_: Exception) { "" }
         f.delete()
         if (text.isBlank()) return
+        // Uzaktan hata raporu için kısa özet (ilk anlamlı satırlar)
+        getSharedPreferences("yayin", MODE_PRIVATE).edit()
+            .putString("lastCrash", text.lineSequence().filter { it.isNotBlank() }.take(3).joinToString(" | ").take(400)).apply()
         // Çökmenin sebebi FFmpeg ise bir daha kullanma (uygulama tekrar tekrar çökmesin)
         val ffmpegNote = if (text.contains("ffmpeg", ignoreCase = true)) {
             getSharedPreferences("yayin", MODE_PRIVATE).edit().putBoolean("ffmpegBroken", true).apply()
@@ -470,6 +473,13 @@ class MainActivity : ComponentActivity() {
         }
         @JavascriptInterface fun nativeVodCmd(cmd: String) = runOnUiThread { native.vodCmd(cmd) }
         @JavascriptInterface fun nativeTs(cmd: String, arg: Double) = runOnUiThread { native.tsCmd(cmd, arg.toLong()) }
+        @JavascriptInterface fun nativeLiveEx(url: String, noFfmpeg: Boolean, retry: Boolean) = runOnUiThread { native.playLiveEx(url, noFfmpeg, retry) }
+        /** Son çökmenin kısa özeti (bir kez verilir), uzaktan hata raporu için. */
+        @JavascriptInterface fun takeLastCrash(): String {
+            val p = getSharedPreferences("yayin", MODE_PRIVATE); val c = p.getString("lastCrash", "") ?: ""
+            if (c.isNotEmpty()) p.edit().remove("lastCrash").apply()
+            return c
+        }
 
         // ---- Uygulama içi güncelleme ----
         @JavascriptInterface fun updateInfo(): String = updater.info()

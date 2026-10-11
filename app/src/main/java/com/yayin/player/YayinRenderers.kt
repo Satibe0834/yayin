@@ -24,6 +24,10 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 @OptIn(UnstableApi::class)
 class YayinRenderers(context: Context, private val useFfmpeg: Boolean) : DefaultRenderersFactory(context) {
 
+    /** Oynatıcıdaki FFmpeg ses çözücüsünün sırası (-1: yok). Tek kanalda kapatmak için. */
+    var ffmpegIndex = -1
+        private set
+
     init {
         // Kütüphanelerin kendiliğinden (yansıma ile) yüklenmesini kapat; FFmpeg sesi aşağıda elle eklenir
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_OFF)
@@ -44,7 +48,7 @@ class YayinRenderers(context: Context, private val useFfmpeg: Boolean) : Default
     ) {
         super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, audioSink, eventHandler, eventListener, out)
         if (useFfmpeg && ffmpegUsable()) {
-            try { out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink)) } catch (_: Throwable) { broken = true }
+            try { ffmpegIndex = out.size; out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink)) } catch (_: Throwable) { broken = true; ffmpegIndex = -1 }
         }
     }
 
