@@ -28,8 +28,8 @@ class YayinRenderers(context: Context, private val useFfmpeg: Boolean) : Default
         // Kütüphanelerin kendiliğinden (yansıma ile) yüklenmesini kapat; FFmpeg sesi aşağıda elle eklenir
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_OFF)
         setEnableDecoderFallback(true)
-        // Çözücüyü eşzamansız kuyrukla çalıştır: daha hızlı ilk kare ve daha akıcı oynatma
-        forceEnableMediaCodecAsynchronousQueueing()
+        // Not: eşzamansız çözücü kuyruğu (forceEnableMediaCodecAsynchronousQueueing) Fire OS'ta
+        // bazı kanalların açılmamasına / geç açılmasına yol açtığı için kullanılmıyor.
     }
 
     override fun buildAudioRenderers(

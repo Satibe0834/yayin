@@ -1169,6 +1169,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     [/^(Süre dolunca .+ sıfırlanır\.) Bugün kalan: (\d+) dk\.$/, P({en:'$1 Left today: $2 min.',de:'$1 Heute übrig: $2 Min.',es:'$1 Hoy quedan: $2 min.',fr:"$1 Reste aujourd'hui : $2 min.",it:'$1 Oggi restano: $2 min.',ru:'$1 Осталось сегодня: $2 мин.',sq:'$1 Sot mbeten: $2 min.'})],
     [/^⏳ (\d+) dk$/, P({en:'⏳ $1 min',de:'⏳ $1 Min.',es:'⏳ $1 min',fr:'⏳ $1 min',it:'⏳ $1 min',ru:'⏳ $1 мин',sq:'⏳ $1 min'})],
     [/^Bu cihaz: (.+)\. Aile mesajları bu ada gönderilir\.$/, P({en:'This device: $1. Family messages are sent to this name.',de:'Dieses Gerät: $1. Familiennachrichten gehen an diesen Namen.',es:'Este dispositivo: $1. Los mensajes familiares se envían a este nombre.',fr:'Cet appareil : $1. Les messages familiaux sont envoyés à ce nom.',it:'Questo dispositivo: $1. I messaggi di famiglia arrivano a questo nome.',ru:'Это устройство: $1. Семейные сообщения отправляются на это имя.',sq:'Kjo pajisje: $1. Mesazhet familjare dërgohen te ky emër.'})],
+    [/^\[([A-Z0-9_]+)\]  (.+)$/, P({en:'[$1]  $2',de:'[$1]  $2',es:'[$1]  $2',fr:'[$1]  $2',it:'[$1]  $2',ru:'[$1]  $2',sq:'[$1]  $2'})],
     [/^(\d+:\d\d) geride$/, P({en:'$1 behind',de:'$1 zurück',es:'$1 de retraso',fr:'$1 de retard',it:'$1 indietro',ru:'$1 назад',sq:'$1 prapa'})],
     [/^([⏪⏩]) (\d+) sn$/, P({en:'$1 $2 s',de:'$1 $2 s',es:'$1 $2 s',fr:'$1 $2 s',it:'$1 $2 s',ru:'$1 $2 с',sq:'$1 $2 s'})],
     [/^Oynatma yaklaşık (\d+) dakika sonra duracak\.$/, P({en:'Playback stops in about $1 minutes.',de:'Wiedergabe endet in etwa $1 Minuten.',es:'La reproducción se detendrá en unos $1 minutos.',fr:"La lecture s'arrêtera dans environ $1 minutes.",it:'La riproduzione si fermerà tra circa $1 minuti.',ru:'Воспроизведение остановится примерно через $1 мин.',sq:'Luajtja ndalon pas rreth $1 minutash.'})],
@@ -2284,14 +2285,15 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     $('msg').innerHTML = !kind ? '' : kind === 'load' ? '<div class="spinner" role="status" aria-label="Yükleniyor"></div>'
       : `<div class="box"><h3>${esc(title)}</h3><p>${esc(text)}</p></div>`;
   }
-  const fail = () => { clearTimeout(stallT); if (failover()) return; showMsg('err','Bu içerik oynatılamıyor', APP ? 'Yayın kapalı olabilir ya da ses/görüntü biçimi (ör. AC3 ses) bu cihazda desteklenmiyor. Harici bir oynatıcıyla deneyebilirsiniz.' : 'Yayın kapalı olabilir ya da sunucu tarayıcıdan erişime izin vermiyor (CORS). Başka bir içerik deneyin.'); addExternal($('msg').querySelector('.box'), current); };
+  let lastErrCode = '';
+  const fail = () => { clearTimeout(stallT); if (failover()) return; showMsg('err','Bu içerik oynatılamıyor', (lastErrCode ? '[' + lastErrCode.replace(/^ERROR_CODE_/, '') + ']  ' : '') + (APP ? 'Yayın kapalı olabilir ya da ses/görüntü biçimi (ör. AC3 ses) bu cihazda desteklenmiyor. Harici bir oynatıcıyla deneyebilirsiniz.' : 'Yayın kapalı olabilir ya da sunucu tarayıcıdan erişime izin vermiyor (CORS). Başka bir içerik deneyin.')); addExternal($('msg').querySelector('.box'), current); };
 
   let zapT = null;
   function play(c, delay = 0, auto = false){
     if (kidsLocked()){ kidsLock(); return; }
     if (!c) return;
     if (!auto) failTried.clear();
-    clearTimeout(stallT); hidePreview(); sInfo = null; $('osdQ').innerHTML = ''; tsState = null; paintTs();
+    clearTimeout(stallT); hidePreview(); sInfo = null; lastErrCode = ''; $('osdQ').innerHTML = ''; tsState = null; paintTs();
     if (current && current.url !== c.url) previous = current;
     current = c; showMsg('load');
     const isLive = c.kind === 'live';
@@ -3061,7 +3063,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (evt === 'buffering'){ showMsg('load'); armStall(); }
     else if (evt === 'playing'){ showMsg(null); $('play').textContent = '❚❚'; liveOk(); }
     else if (evt === 'paused') $('play').textContent = '▶';
-    else if (evt === 'error') fail();
+    else if (evt === 'error'){ lastErrCode = (d && d.code) || ''; fail(); }
   };
 
 
