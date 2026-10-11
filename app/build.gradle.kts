@@ -5,7 +5,8 @@ plugins {
 
 // GitHub Actions her derlemede artan bir numara verir; uygulama içi güncelleme bununla karşılaştırır
 val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-val updateRepo = System.getenv("GITHUB_REPOSITORY") ?: ""
+// Güncellemeler ve aile mesajları: herkese açık dağıtım deposu (kod deposu gizli olabilir)
+val updateRepo = System.getenv("UPDATE_REPO")?.ifBlank { null } ?: System.getenv("GITHUB_REPOSITORY") ?: ""
 val releaseKeystore = file("release.keystore")
 
 android {
