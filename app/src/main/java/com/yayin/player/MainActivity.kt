@@ -18,6 +18,9 @@ import java.io.File
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import org.json.JSONObject
+import org.json.JSONTokener
+import android.media.AudioManager
+import java.util.concurrent.CountDownLatch
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -68,6 +71,24 @@ class MainActivity : ComponentActivity() {
     private fun stopRemoteSoon() = web.postDelayed({ remote.stop() }, 2_000)
     private val watchNext by lazy { WatchNext(this) }
     private val images by lazy { ImageShrinker(cacheDir) }
+    private val phone by lazy { PhoneRemote(this) { json -> callJs(json) } }
+
+    /** Telefondan gelen isteği sayfadaki window.yayinPhone(...) ile yanıtla (en fazla 8 sn bekler). */
+    private fun callJs(json: String): String {
+        val latch = CountDownLatch(1)
+        var out = "{\"error\":\"timeout\"}"
+        runOnUiThread {
+            if (webDead) { latch.countDown(); return@runOnUiThread }
+            web.evaluateJavascript(
+                "(function(){try{return JSON.stringify(window.yayinPhone?window.yayinPhone($json):{error:'not ready'})}catch(e){return JSON.stringify({error:String(e)})}})()"
+            ) { v ->
+                out = try { (JSONTokener(v).nextValue() as? String) ?: "{}" } catch (_: Exception) { "{}" }
+                latch.countDown()
+            }
+        }
+        try { latch.await(8, java.util.concurrent.TimeUnit.SECONDS) } catch (_: InterruptedException) {}
+        return out
+    }
     private val updater by lazy { Updater(this) { evt, data -> jsEvent(evt, data) } }
     private fun jsEvent(evt: String, data: JSONObject) = runOnUiThread {
         if (!webDead) web.evaluateJavascript("window.yayinNative && yayinNative('$evt', $data)", null)
@@ -338,7 +359,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() { native.onPause(); if (!webDead) web.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); if (!webDead) web.onResume(); native.onResume(); updater.onResume() }
-    override fun onDestroy() { remote.stop(); native.release(); if (!webDead) web.destroy(); super.onDestroy() }
+    override fun onDestroy() { phone.stop(); remote.stop(); native.release(); if (!webDead) web.destroy(); super.onDestroy() }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -421,6 +442,21 @@ class MainActivity : ComponentActivity() {
 
         // ---- Sesli arama ----
         @JavascriptInterface fun voiceSearch() = runOnUiThread { startVoice() }
+
+        // ---- Telefon kumandası ----
+        @JavascriptInterface fun phoneStart(): String = phone.start()
+        @JavascriptInterface fun phoneStop() { phone.stop() }
+        @JavascriptInterface fun phoneNewToken(): String = phone.newToken()
+
+        // ---- Ses, film komutları, canlı geri sarma ----
+        @JavascriptInterface fun sysVolume(dir: Int) = runOnUiThread {
+            val am = getSystemService(AUDIO_SERVICE) as AudioManager
+            am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                when { dir > 0 -> AudioManager.ADJUST_RAISE; dir < 0 -> AudioManager.ADJUST_LOWER; else -> AudioManager.ADJUST_TOGGLE_MUTE },
+                AudioManager.FLAG_SHOW_UI)
+        }
+        @JavascriptInterface fun nativeVodCmd(cmd: String) = runOnUiThread { native.vodCmd(cmd) }
+        @JavascriptInterface fun nativeTs(cmd: String, arg: Double) = runOnUiThread { native.tsCmd(cmd, arg.toLong()) }
 
         // ---- Uygulama içi güncelleme ----
         @JavascriptInterface fun updateInfo(): String = updater.info()

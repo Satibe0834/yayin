@@ -45,7 +45,10 @@ import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
+import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import java.util.concurrent.TimeUnit
 
 /**
@@ -93,6 +96,8 @@ class NativePlayer(
     private var subLang = ""
     private var subScale = 1f
     private var quality = "max"
+    private var tsEnabled = true
+    private var tsKeepMin = 30
 
     var player: ExoPlayer = buildPlayer()
         private set
@@ -222,6 +227,13 @@ class NativePlayer(
             override fun onPlayerError(error: PlaybackException) {
                 // Biçim tanınmadıysa: bazı sağlayıcılar .mp4/.mkv adresinden HLS yayını verir → bir kez HLS olarak dene
                 if (mode == Mode.VOD) { recoverVod(error); return }
+                if (mode == Mode.LIVE && ts != null) {
+                    // Geri sarma kopyasıyla oynatılamadı: bu kanalı normal yoldan oynat
+                    val u = tsUrl
+                    stopTimeshift()
+                    if (u != null) { tsBlocked.add(u); playLive(u) }
+                    return
+                }
                 if (!triedAsHls && (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
                         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)) {
                     val item = player.currentMediaItem
@@ -274,6 +286,8 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         quality = o.optString("quality", "max")
+        tsEnabled = o.optBoolean("timeshift", true)
+        tsKeepMin = o.optInt("tsMinutes", 30).coerceIn(5, 120)
         subLang = o.optString("subLang", "")
         subScale = when (o.optString("subSize", "normal")) { "small" -> 0.8f; "large" -> 1.3f; "xlarge" -> 1.6f; else -> 1f }
 
@@ -312,6 +326,11 @@ class NativePlayer(
     fun playLive(url: String) {
         triedAsHls = false
         if (mode == Mode.VOD) closeVod(notify = false)
+        if (mode == Mode.LIVE && ts != null && tsUrl == url) {
+            view.visibility = View.VISIBLE
+            player.playWhenReady = true
+            return
+        }
         // Aynı kanal zaten oynuyorsa (ör. ana menü arka planından Canlı TV'ye geçiş) yeniden yükleme
         if (mode == Mode.LIVE && player.playbackState != Player.STATE_IDLE &&
             player.currentMediaItem?.localConfiguration?.uri?.toString() == url) {
@@ -323,10 +342,88 @@ class NativePlayer(
         mode = Mode.LIVE
         liveRetries = 0
         view.visibility = View.VISIBLE
+        if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
+        stopTimeshift()
         player.setMediaItem(mediaItem(url))
         player.prepare()
         player.playWhenReady = true
     }
+
+    // ---------------- Canlı yayını durdur / geri sar ----------------
+
+    private var ts: Timeshift? = null
+    private var tsUrl: String? = null
+    private var tsSourceWall = 0L
+    private var tsResumeUrl: String? = null
+    private val tsBlocked = HashSet<String>()
+
+    private fun isAdaptive(url: String) = url.lowercase().let { "m3u8" in it || ".mpd" in it }
+
+    private fun startTimeshift(url: String) {
+        stopTimeshift()
+        val t = Timeshift(File(activity.cacheDir, "timeshift"), http, userAgent, tsKeepMin * 60_000L) {
+            main.post { if (mode == Mode.LIVE && tsUrl == url) emit("error", JSONObject().put("code", "NO_DATA")) }
+        }
+        ts = t; tsUrl = url
+        t.start(url)
+        playTsFrom(0L, System.currentTimeMillis())
+        main.removeCallbacks(tsTick)
+        main.postDelayed(tsTick, 1000)
+    }
+
+    private fun playTsFrom(offset: Long, wall: Long) {
+        val t = ts ?: return
+        tsSourceWall = wall
+        val factory = ProgressiveMediaSource.Factory(DataSource.Factory { TimeshiftDataSource(t) }, sourceExtractors())
+        player.setMediaSource(factory.createMediaSource(MediaItem.fromUri("timeshift://live?o=$offset")))
+        player.prepare()
+        player.playWhenReady = true
+    }
+
+    private fun stopTimeshift() {
+        main.removeCallbacks(tsTick)
+        ts?.stop()
+        ts = null; tsUrl = null
+    }
+
+    /** JS'ten: toggle / pause / play / seek(ms) / live */
+    fun tsCmd(cmd: String, arg: Long) {
+        val t = ts
+        if (t == null) { if (cmd == "toggle") toggle(); return }
+        val now = System.currentTimeMillis()
+        when (cmd) {
+            "toggle" -> player.playWhenReady = !player.playWhenReady
+            "pause" -> player.playWhenReady = false
+            "play" -> player.playWhenReady = true
+            "seek" -> {
+                val cur = tsSourceWall + player.currentPosition
+                val target = (cur + arg).coerceIn(t.oldestWall(), now - 1500)
+                if (arg > 0 && target >= now - 4000) { val o = t.offsetAt(now - 1500); playTsFrom(o, t.wallAt(o)) }
+                else { val o = t.offsetAt(target); playTsFrom(o, t.wallAt(o)) }
+            }
+            "live" -> { val o = t.offsetAt(now - 1500); playTsFrom(o, t.wallAt(o)) }
+        }
+        emitTs()
+    }
+
+    private val tsTick = object : Runnable {
+        override fun run() {
+            if (ts != null && mode == Mode.LIVE) { emitTs(); main.postDelayed(this, 1000) }
+        }
+    }
+
+    private fun emitTs() {
+        val t = ts ?: return
+        val now = System.currentTimeMillis()
+        val behind = (now - (tsSourceWall + player.currentPosition)).coerceAtLeast(0)
+        emit("ts", JSONObject()
+            .put("behind", behind / 1000)
+            .put("avail", (now - t.oldestWall()) / 1000)
+            .put("paused", !player.playWhenReady))
+    }
+
+    private fun sourceExtractors() = DefaultExtractorsFactory()
+        .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
 
     /** Web arayüzündeki oynatıcı alanının konumu (CSS piksel). */
     fun setRect(x: Float, y: Float, w: Float, h: Float) {
@@ -340,6 +437,7 @@ class NativePlayer(
 
     fun stop() {
         if (mode == Mode.VOD) return
+        stopTimeshift()
         mode = Mode.NONE
         player.stop()
         player.clearMediaItems()
@@ -380,6 +478,7 @@ class NativePlayer(
 
     fun playVod(json: String, index: Int, startMs: Long) {
         vodItems = try { JSONArray(json) } catch (_: Exception) { return }
+        stopTimeshift()
         triedAsHls = false
         vodTried.clear(); vodUa = userAgent; lastProbe = null
         if (vodItems.length() == 0) return
@@ -440,6 +539,18 @@ class NativePlayer(
         val dur = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
         player.seekTo((player.currentPosition + ms).coerceIn(0, dur))
         view.showController()
+    }
+
+    /** Telefondan film/dizi komutları */
+    fun vodCmd(cmd: String) {
+        if (mode != Mode.VOD) return
+        when (cmd) {
+            "playpause" -> { toggle(); view.showController() }
+            "ff" -> seekBy(30_000); "rw" -> seekBy(-30_000)
+            "ff10" -> seekBy(10_000); "rw10" -> seekBy(-10_000)
+            "next" -> next(); "prev" -> previous()
+            "back" -> closeVod()
+        }
     }
 
     fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
@@ -650,11 +761,18 @@ class NativePlayer(
     fun onPause() {
         aux.forEach { it?.playWhenReady = false }
         wasPlayingOnPause = player.playWhenReady
+        // Uygulama arka plana geçince canlı yayını indirmeyi bırak (bant genişliği / bağlantı)
+        if (ts != null && mode == Mode.LIVE) { tsResumeUrl = tsUrl; stopTimeshift() }
         if (mode == Mode.VOD) emitProgress()
         player.playWhenReady = false
     }
 
     fun onResume() {
+        val ru = tsResumeUrl
+        if (ru != null) {
+            tsResumeUrl = null
+            if (mode == Mode.LIVE && wasPlayingOnPause) { startTimeshift(ru); return }
+        }
         if (mode != Mode.NONE && wasPlayingOnPause) {
             if (mode == Mode.LIVE) player.seekToDefaultPosition()
             player.playWhenReady = true
@@ -663,6 +781,7 @@ class NativePlayer(
     }
 
     fun release() {
+        stopTimeshift()
         main.removeCallbacksAndMessages(null)
         aux.forEach { it?.release() }
         player.release()

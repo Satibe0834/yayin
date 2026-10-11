@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#140A0D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Yayın · Kumanda</title>
+<style>
+:root{--acc:#E3242B;--ink:#140A0D;--p1:#1E1013;--p2:#2A161A;--line:#3E2228;--tx:#F5ECEE;--mu:#B39CA1}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--ink);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0)}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+header{padding:12px 14px 8px;display:flex;align-items:center;gap:10px}
+header b{font-size:20px;letter-spacing:-.02em}
+.dot{width:9px;height:9px;border-radius:50%;background:#666;margin-left:auto}
+.dot.on{background:#2ecc71;box-shadow:0 0 0 4px rgba(46,204,113,.2)}
+.now{margin:0 12px 8px;background:var(--p1);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:center}
+.now .lg{width:44px;height:44px;border-radius:10px;background:var(--p2);display:grid;place-items:center;overflow:hidden;font-weight:800;color:var(--mu)}
+.now .lg img{width:100%;height:100%;object-fit:contain}
+.now .t{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.now .s{font-size:12.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ts{grid-column:1/-1;display:none;gap:8px;align-items:center;margin-top:4px}
+.ts.on{display:flex}
+.ts .bar{flex:1;height:6px;background:var(--line);border-radius:3px;position:relative;overflow:hidden}
+.ts .bar i{position:absolute;top:0;bottom:0;left:0;background:var(--acc)}
+.ts .lbl{font-size:12px;font-weight:700;color:var(--mu);min-width:62px;text-align:right}
+.ts button{background:var(--p2);border-radius:10px;padding:7px 10px;font-size:13px;font-weight:700}
+.ts button.live{background:var(--acc);color:#fff}
+main{flex:1;overflow-y:auto;padding:4px 12px 90px}
+.tab{display:none}.tab.on{display:block}
+nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:rgba(20,10,13,.96);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0);backdrop-filter:blur(10px)}
+nav button{background:none;padding:10px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11.5px;color:var(--mu);font-weight:600}
+nav button span{font-size:21px}
+nav button.on{color:var(--tx)}
+nav button.on span{transform:scale(1.12)}
+/* Kumanda */
+.pad{position:relative;width:min(78vw,300px);aspect-ratio:1;margin:14px auto 18px;border-radius:50%;background:radial-gradient(circle at 50% 40%,var(--p2),var(--p1));border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.45)}
+.pad button{position:absolute;background:none;width:33%;height:33%;font-size:26px;color:var(--tx);border-radius:50%}
+.pad button:active{background:rgba(255,255,255,.08)}
+.pad .u{top:2%;left:33.5%}.pad .d{bottom:2%;left:33.5%}.pad .l{left:2%;top:33.5%}.pad .r{right:2%;top:33.5%}
+.pad .ok{left:33.5%;top:33.5%;background:var(--acc)!important;color:#fff;font-weight:800;font-size:19px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.row{display:grid;gap:10px;margin-bottom:10px}
+.r3{grid-template-columns:repeat(3,1fr)}.r4{grid-template-columns:repeat(4,1fr)}.r2{grid-template-columns:1fr 1fr}
+.k{background:var(--p1);border:1px solid var(--line);border-radius:14px;padding:13px 6px;font-weight:700;font-size:14px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.k span{font-size:20px}
+.k i,nav i{font-style:normal}
+.k:active{background:var(--p2);transform:scale(.97)}
+.k.acc{background:var(--acc);border-color:var(--acc);color:#fff}
+/* Listeler */
+.ctl{display:flex;gap:8px;margin:6px 0 10px;position:sticky;top:0;background:var(--ink);padding:6px 0;z-index:2}
+select,input{flex:1;min-width:0;background:var(--p1);border:1px solid var(--line);border-radius:12px;color:var(--tx);padding:11px 12px;font-size:15px}
+.it{display:grid;grid-template-columns:30px 44px 1fr auto;gap:10px;align-items:center;padding:9px 8px;border-radius:12px;border:1px solid transparent}
+.it+.it{border-top-color:var(--line);border-radius:0}
+.it:active{background:var(--p2)}
+.it .n{font-size:12px;color:var(--mu);font-weight:700;text-align:right}
+.it .lg{width:44px;height:44px;border-radius:9px;background:var(--p2);display:grid;place-items:center;overflow:hidden;font-size:12px;font-weight:800;color:var(--mu)}
+.it .lg img{width:100%;height:100%;object-fit:contain}
+.it .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+.it .sb{font-size:12px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .go{background:var(--acc);color:#fff;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;font-size:13px}
+.sec{font-weight:800;font-size:16px;margin:16px 4px 6px}
+.more{width:100%;background:var(--p1);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px;font-weight:700}
+.hint{color:var(--mu);text-align:center;padding:30px 10px}
+.m{display:grid;grid-template-columns:62px 1fr auto;gap:10px;align-items:center;padding:11px 6px;border-top:1px solid var(--line)}
+.m .tm{font-weight:800;font-size:16px}.m .tm small{display:block;font-size:11px;color:var(--mu);font-weight:600}
+.m .lv{color:#ff4d55;font-size:11px;font-weight:800}
+.m .ti{font-weight:700}.m .su{font-size:12px;color:var(--mu)}
+.m button{background:var(--p2);border-radius:10px;padding:8px 10px;font-weight:700;font-size:13px}
+.m button.w{background:var(--acc);color:#fff}
+.toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#000c;border:1px solid var(--line);padding:9px 16px;border-radius:999px;font-weight:600;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1}
+.err{margin:30px 16px;padding:18px;border-radius:14px;background:var(--p1);border:1px solid var(--line);text-align:center;color:var(--mu)}
+</style>
+</head>
+<body>
+<header><b>📺 Yayın</b><span id="hdr" style="color:var(--mu);font-size:13px"></span><i class="dot" id="dot"></i></header>
+<div class="now" id="now">
+  <div class="lg" id="nLg">📺</div>
+  <div style="min-width:0"><div class="t" id="nT">…</div><div class="s" id="nS"></div></div>
+  <div class="ts" id="ts">
+    <button data-ts="seek" data-a="-15000">⏪ 15</button>
+    <div class="bar"><i id="tsBar"></i></div><span class="lbl" id="tsLbl"></span>
+    <button data-ts="toggle" id="tsPP">⏯</button>
+    <button data-ts="live" class="live" id="tsLive"></button>
+  </div>
+</div>
+<main>
+  <section class="tab on" id="t-remote">
+    <div class="pad">
+      <button class="u" data-k="up">▲</button><button class="l" data-k="left">◀</button>
+      <button class="ok" data-k="ok">OK</button>
+      <button class="r" data-k="right">▶</button><button class="d" data-k="down">▼</button>
+    </div>
+    <div class="row r3"><button class="k" data-k="back"><span>↩</span><i data-l="back"></i></button><button class="k" data-k="home"><span>⌂</span><i data-l="home"></i></button><button class="k" data-k="menu"><span>☰</span><i data-l="menu"></i></button></div>
+    <div class="row r3"><button class="k" data-k="voldown"><span>🔉</span><i data-l="vol-"></i></button><button class="k" data-k="mute"><span>🔇</span><i data-l="mute"></i></button><button class="k" data-k="volup"><span>🔊</span><i data-l="vol+"></i></button></div>
+    <div class="row r3"><button class="k" data-k="chdown"><span>⏬</span><i data-l="chDown"></i></button><button class="k acc" data-k="playpause"><span>⏯</span><i data-l="play"></i></button><button class="k" data-k="chup"><span>⏫</span><i data-l="chUp"></i></button></div>
+    <div class="row r3"><button class="k" data-k="rw"><span>⏪</span><i data-l="rewind"></i></button><button class="k" data-k="full"><span>⛶</span><i data-l="full"></i></button><button class="k" data-k="ff"><span>⏩</span><i data-l="forward"></i></button></div>
+  </section>
+  <section class="tab" id="t-chans">
+    <div class="ctl"><select id="cat"></select><input id="cq" type="search" data-ph="filter"></div>
+    <div id="clist"></div>
+    <button class="more" id="cmore" style="display:none" data-l="more"></button>
+  </section>
+  <section class="tab" id="t-search">
+    <div class="ctl"><input id="sq" type="search" data-ph="searchPh" autocomplete="off"></div>
+    <div id="sres"><p class="hint" data-l="searchHint"></p></div>
+  </section>
+  <section class="tab" id="t-match">
+    <div class="ctl"><select id="mcc"></select></div>
+    <div id="mlist"></div>
+  </section>
+</main>
+<nav>
+  <button class="on" data-t="remote"><span>🎮</span><i data-l="remote"></i></button>
+  <button data-t="chans"><span>📺</span><i data-l="channels"></i></button>
+  <button data-t="search"><span>🔍</span><i data-l="search"></i></button>
+  <button data-t="match"><span>⚽</span><i data-l="matches"></i></button>
+</nav>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const T = new URLSearchParams(location.search).get('t') || '';
+  const L = {
+    tr:{remote:'Kumanda',channels:'Kanallar',search:'Ara',matches:'Maçlar',back:'Geri',home:'Ana ekran',menu:'Menü','vol-':'Ses −',mute:'Sessiz','vol+':'Ses +',chDown:'Kanal −',play:'Oynat',chUp:'Kanal +',rewind:'Geri sar',full:'Tam ekran',forward:'İleri sar',more:'Daha fazla',filter:'Kanal süz…',searchPh:'Kanal, film veya dizi ara',searchHint:'Yazmaya başlayın; sonuca dokununca TV\'de açılır.',none:'Sonuç yok',nothing:'TV\'de bir şey oynamıyor',live:'● CANLI',toLive:'Canlıya dön',paused:'Durduruldu',behind:'geride',all:'Tümü',fav:'★ Favoriler',recent:'🕘 Son izlenenler',liveTV:'Canlı kanallar',movies:'Filmler',series:'Diziler',watch:'▶ İzle',remind:'🔔',reminded:'✓',openedTv:'TV\'de açıldı',scanning:'Maçlar taranıyor…',noMatch:'Maç bulunamadı',xt:'Maç Merkezi için Xtream hesabı gerekir',lost:'TV\'ye bağlanılamıyor. TV açık ve aynı Wi-Fi\'da mı?',token:'Bağlantı kodu değişmiş. TV\'deki QR kodu yeniden okutun.',today:'Bugün',tomorrow:'Yarın',liveNow:'Şimdi canlı'},
+    en:{remote:'Remote',channels:'Channels',search:'Search',matches:'Matches',back:'Back',home:'Home',menu:'Menu','vol-':'Vol −',mute:'Mute','vol+':'Vol +',chDown:'Ch −',play:'Play',chUp:'Ch +',rewind:'Rewind',full:'Full screen',forward:'Forward',more:'Load more',filter:'Filter channels…',searchPh:'Search channels, movies, series',searchHint:'Start typing; tap a result to open it on the TV.',none:'No results',nothing:'Nothing playing on the TV',live:'● LIVE',toLive:'Go live',paused:'Paused',behind:'behind',all:'All',fav:'★ Favorites',recent:'🕘 Recently watched',liveTV:'Live channels',movies:'Movies',series:'Series',watch:'▶ Watch',remind:'🔔',reminded:'✓',openedTv:'Opened on TV',scanning:'Scanning matches…',noMatch:'No matches found',xt:'Match Center needs an Xtream account',lost:"Can't reach the TV. Is it on and on the same Wi-Fi?",token:'The link code changed. Scan the QR on the TV again.',today:'Today',tomorrow:'Tomorrow',liveNow:'Live now'},
+    de:{remote:'Fernbedienung',channels:'Sender',search:'Suche',matches:'Spiele',back:'Zurück',home:'Start',menu:'Menü','vol-':'Leiser',mute:'Stumm','vol+':'Lauter',chDown:'Sender −',play:'Abspielen',chUp:'Sender +',rewind:'Zurück',full:'Vollbild',forward:'Vor',more:'Mehr laden',filter:'Sender filtern…',searchPh:'Sender, Filme, Serien suchen',searchHint:'Tippen Sie los; ein Treffer öffnet sich am TV.',none:'Keine Treffer',nothing:'Am TV läuft nichts',live:'● LIVE',toLive:'Zu Live',paused:'Pausiert',behind:'zurück',all:'Alle',fav:'★ Favoriten',recent:'🕘 Zuletzt gesehen',liveTV:'Live-Sender',movies:'Filme',series:'Serien',watch:'▶ Ansehen',remind:'🔔',reminded:'✓',openedTv:'Am TV geöffnet',scanning:'Spiele werden gesucht…',noMatch:'Keine Spiele gefunden',xt:'Das Spielzentrum braucht ein Xtream-Konto',lost:'TV nicht erreichbar. Ist er an und im selben WLAN?',token:'Code geändert. QR am TV erneut scannen.',today:'Heute',tomorrow:'Morgen',liveNow:'Jetzt live'},
+    es:{remote:'Mando',channels:'Canales',search:'Buscar',matches:'Partidos',back:'Atrás',home:'Inicio',menu:'Menú','vol-':'Vol −',mute:'Silencio','vol+':'Vol +',chDown:'Canal −',play:'Reproducir',chUp:'Canal +',rewind:'Retroceder',full:'Pantalla completa',forward:'Avanzar',more:'Cargar más',filter:'Filtrar canales…',searchPh:'Buscar canales, películas, series',searchHint:'Escribe; toca un resultado para abrirlo en la TV.',none:'Sin resultados',nothing:'No se reproduce nada',live:'● EN DIRECTO',toLive:'Ir al directo',paused:'En pausa',behind:'atrás',all:'Todo',fav:'★ Favoritos',recent:'🕘 Vistos',liveTV:'Canales',movies:'Películas',series:'Series',watch:'▶ Ver',remind:'🔔',reminded:'✓',openedTv:'Abierto en la TV',scanning:'Buscando partidos…',noMatch:'No hay partidos',xt:'El Centro de partidos necesita Xtream',lost:'No se encuentra la TV. ¿Está encendida y en la misma Wi-Fi?',token:'El código cambió. Escanea de nuevo el QR.',today:'Hoy',tomorrow:'Mañana',liveNow:'En directo'},
+    fr:{remote:'Télécommande',channels:'Chaînes',search:'Rechercher',matches:'Matchs',back:'Retour',home:'Accueil',menu:'Menu','vol-':'Vol −',mute:'Muet','vol+':'Vol +',chDown:'Chaîne −',play:'Lecture',chUp:'Chaîne +',rewind:'Reculer',full:'Plein écran',forward:'Avancer',more:'Charger plus',filter:'Filtrer les chaînes…',searchPh:'Chaînes, films, séries',searchHint:'Tapez ; touchez un résultat pour l\'ouvrir sur la TV.',none:'Aucun résultat',nothing:'Rien en lecture',live:'● DIRECT',toLive:'Revenir au direct',paused:'En pause',behind:'de retard',all:'Tout',fav:'★ Favoris',recent:'🕘 Vus récemment',liveTV:'Chaînes',movies:'Films',series:'Séries',watch:'▶ Regarder',remind:'🔔',reminded:'✓',openedTv:'Ouvert sur la TV',scanning:'Recherche des matchs…',noMatch:'Aucun match',xt:'Le Centre des matchs nécessite Xtream',lost:'TV injoignable. Allumée et sur le même Wi-Fi ?',token:'Code changé. Rescannez le QR de la TV.',today:"Aujourd'hui",tomorrow:'Demain',liveNow:'En direct'},
+    it:{remote:'Telecomando',channels:'Canali',search:'Cerca',matches:'Partite',back:'Indietro',home:'Home',menu:'Menu','vol-':'Vol −',mute:'Muto','vol+':'Vol +',chDown:'Canale −',play:'Riproduci',chUp:'Canale +',rewind:'Indietro',full:'Schermo intero',forward:'Avanti',more:'Carica altri',filter:'Filtra canali…',searchPh:'Cerca canali, film, serie',searchHint:'Scrivi; tocca un risultato per aprirlo sulla TV.',none:'Nessun risultato',nothing:'Nulla in riproduzione',live:'● DIRETTA',toLive:'Vai alla diretta',paused:'In pausa',behind:'indietro',all:'Tutti',fav:'★ Preferiti',recent:'🕘 Recenti',liveTV:'Canali',movies:'Film',series:'Serie',watch:'▶ Guarda',remind:'🔔',reminded:'✓',openedTv:'Aperto sulla TV',scanning:'Ricerca partite…',noMatch:'Nessuna partita',xt:'Il Centro partite richiede Xtream',lost:'TV non raggiungibile. È accesa e sulla stessa Wi-Fi?',token:'Codice cambiato. Scansiona di nuovo il QR.',today:'Oggi',tomorrow:'Domani',liveNow:'In diretta'},
+    ru:{remote:'Пульт',channels:'Каналы',search:'Поиск',matches:'Матчи',back:'Назад',home:'Главная',menu:'Меню','vol-':'Тише',mute:'Без звука','vol+':'Громче',chDown:'Канал −',play:'Пуск',chUp:'Канал +',rewind:'Назад',full:'Весь экран',forward:'Вперёд',more:'Ещё',filter:'Фильтр каналов…',searchPh:'Каналы, фильмы, сериалы',searchHint:'Начните вводить; нажмите результат — он откроется на ТВ.',none:'Ничего не найдено',nothing:'На ТВ ничего не играет',live:'● ЭФИР',toLive:'В эфир',paused:'Пауза',behind:'назад',all:'Все',fav:'★ Избранное',recent:'🕘 Недавние',liveTV:'Каналы',movies:'Фильмы',series:'Сериалы',watch:'▶ Смотреть',remind:'🔔',reminded:'✓',openedTv:'Открыто на ТВ',scanning:'Поиск матчей…',noMatch:'Матчей нет',xt:'Для матч-центра нужен Xtream',lost:'ТВ недоступен. Он включён и в той же Wi-Fi?',token:'Код изменился. Отсканируйте QR на ТВ снова.',today:'Сегодня',tomorrow:'Завтра',liveNow:'Сейчас в эфире'},
+    sq:{remote:'Telekomanda',channels:'Kanalet',search:'Kërko',matches:'Ndeshjet',back:'Mbrapa',home:'Fillimi',menu:'Menyja','vol-':'Zë −',mute:'Pa zë','vol+':'Zë +',chDown:'Kanal −',play:'Luaj',chUp:'Kanal +',rewind:'Prapa',full:'Ekran i plotë',forward:'Përpara',more:'Më shumë',filter:'Filtro kanalet…',searchPh:'Kërko kanale, filma, seriale',searchHint:'Shkruaj; prek një rezultat për ta hapur në TV.',none:'Asnjë rezultat',nothing:'Asgjë nuk luhet në TV',live:'● LIVE',toLive:'Kthehu live',paused:'Pauzë',behind:'prapa',all:'Të gjitha',fav:'★ Të preferuarat',recent:'🕘 Parë së fundi',liveTV:'Kanalet',movies:'Filma',series:'Seriale',watch:'▶ Shiko',remind:'🔔',reminded:'✓',openedTv:'U hap në TV',scanning:'Po kërkohen ndeshjet…',noMatch:'Nuk ka ndeshje',xt:'Qendra kërkon llogari Xtream',lost:'TV nuk arrihet. A është ndezur dhe në të njëjtin Wi-Fi?',token:'Kodi ndryshoi. Skano sërish QR-në në TV.',today:'Sot',tomorrow:'Nesër',liveNow:'Live tani'}
+  };
+  let lang = 'tr', S = L.tr;
+  const t = k => S[k] || L.tr[k] || k;
+  function applyLang(l){
+    if (!L[l] || l === lang) return; lang = l; S = L[l]; document.documentElement.lang = l;
+    document.querySelectorAll('[data-l]').forEach(e => e.textContent = t(e.dataset.l));
+    document.querySelectorAll('[data-ph]').forEach(e => e.placeholder = t(e.dataset.ph));
+    $('tsLive').textContent = t('toLive');
+  }
+  document.querySelectorAll('[data-l]').forEach(e => e.textContent = t(e.dataset.l));
+  document.querySelectorAll('[data-ph]').forEach(e => e.placeholder = t(e.dataset.ph));
+  $('tsLive').textContent = t('toLive');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const hm = s => new Date(s * 1000).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  let tT;
+  const toast = m => { const e = $('toast'); e.textContent = m; e.classList.add('on'); clearTimeout(tT); tT = setTimeout(() => e.classList.remove('on'), 1600); };
+  const buzz = () => { try { navigator.vibrate && navigator.vibrate(12); } catch {} };
+  const logo = (l, n) => l ? `<img src="${esc(l)}" alt="" loading="lazy" onerror="this.remove()">` : esc((n || '•').replace(/[^\p{L}\p{N} ]/gu, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase());
+
+  let online = true;
+  async function api(op, data = {}){
+    try {
+      const r = await fetch('/api?t=' + encodeURIComponent(T), { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ op, ...data }) });
+      if (r.status === 403){ showErr(t('token')); return null; }
+      const j = await r.json(); setOnline(true); return j;
+    } catch { setOnline(false); return null; }
+  }
+  function setOnline(v){ online = v; $('dot').classList.toggle('on', v); if (!v) $('nT').textContent = t('lost'); }
+  function showErr(m){ document.querySelector('main').innerHTML = `<div class="err">${esc(m)}</div>`; }
+
+  // ---- Şu an oynayan + geri sarma ----
+  function paint(st){
+    if (!st) return;
+    if (st.lang) applyLang(st.lang);
+    if (st.accent) document.documentElement.style.setProperty('--acc', st.accent);
+    const c = st.cur;
+    if (st.vod){ $('nT').textContent = st.vod.title || ''; $('nS').textContent = st.vod.sub || ''; $('nLg').innerHTML = '🎬'; }
+    else if (c){
+      $('nT').textContent = (c.num ? c.num + '  ' : '') + c.name;
+      $('nS').textContent = st.now ? `${hm(st.now.start)}–${hm(st.now.end)} · ${st.now.title}` : (c.group || '');
+      $('nLg').innerHTML = logo(c.logo, c.name);
+    } else { $('nT').textContent = t('nothing'); $('nS').textContent = ''; $('nLg').innerHTML = '📺'; }
+    const ts = st.ts;
+    const on = !!(ts && c && !st.vod);
+    $('ts').classList.toggle('on', on);
+    if (on){
+      const behind = ts.behind || 0, avail = Math.max(ts.avail || 1, 1);
+      $('tsBar').style.width = Math.max(2, 100 - behind / avail * 100) + '%';
+      $('tsLbl').textContent = ts.paused ? '⏸ ' + t('paused') : behind > 3 ? `-${mmss(behind)}` : t('live');
+      $('tsLive').style.visibility = behind > 3 ? 'visible' : 'hidden';
+      $('tsPP').textContent = ts.paused ? '▶' : '⏸';
+    }
+  }
+  async function poll(){ if (document.hidden) return; paint(await api('state')); }
+  setInterval(poll, 2500); poll();
+  document.addEventListener('visibilitychange', poll);
+
+  $('ts').addEventListener('click', async e => { const b = e.target.closest('[data-ts]'); if (!b) return; buzz(); await api('ts', { cmd:b.dataset.ts, arg:+(b.dataset.a || 0) }); setTimeout(poll, 300); });
+
+  // ---- Kumanda tuşları ----
+  document.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', async () => { buzz(); const r = await api('key', { k:b.dataset.k }); if (r && r.state) paint(r.state); }));
+
+  // ---- Sekmeler ----
+  let loaded = {};
+  document.querySelectorAll('nav [data-t]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('nav [data-t]').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === 't-' + b.dataset.t));
+    if (b.dataset.t === 'chans' && !loaded.chans){ loaded.chans = 1; loadCats(); }
+    if (b.dataset.t === 'match' && !loaded.match){ loaded.match = 1; loadMatches(); }
+    if (b.dataset.t === 'search') setTimeout(() => $('sq').focus(), 50);
+  }));
+
+  // ---- Kanallar ----
+  let cOff = 0;
+  async function loadCats(){
+    const r = await api('cats'); if (!r) return;
+    $('cat').innerHTML = (r.cats || []).map(c => `<option value="${esc(c.id)}">${esc(c.id === '__all' ? t('all') : c.id === '__fav' ? t('fav') : c.id === '__recent' ? t('recent') : c.name)} (${c.n})</option>`).join('');
+    loadChans(true);
+  }
+  async function loadChans(reset){
+    if (reset){ cOff = 0; $('clist').innerHTML = ''; }
+    const r = await api('chans', { cat:$('cat').value, q:$('cq').value.trim(), offset:cOff, limit:60 }); if (!r) return;
+    $('clist').insertAdjacentHTML('beforeend', (r.items || []).map(c => `<div class="it" data-u="${esc(c.url)}"><span class="n">${esc(c.num || '')}</span><span class="lg">${logo(c.logo, c.name)}</span><span style="min-width:0"><div class="nm">${esc(c.name)}</div><div class="sb">${esc(c.now ? c.now : c.group)}</div></span><span class="go">▶</span></div>`).join(''));
+    if (!r.items || (!cOff && !r.items.length)) $('clist').innerHTML = `<p class="hint">${t('none')}</p>`;
+    cOff += (r.items || []).length;
+    $('cmore').style.display = cOff < (r.total || 0) ? 'block' : 'none';
+  }
+  $('cat').addEventListener('change', () => loadChans(true));
+  let cqT; $('cq').addEventListener('input', () => { clearTimeout(cqT); cqT = setTimeout(() => loadChans(true), 300); });
+  $('cmore').addEventListener('click', () => loadChans(false));
+  async function playOnTv(id){ buzz(); const r = await api('play', { id }); if (r && r.ok) toast(t('openedTv')); setTimeout(poll, 600); }
+  $('clist').addEventListener('click', e => { const it = e.target.closest('[data-u]'); if (it) playOnTv(it.dataset.u); });
+
+  // ---- Arama ----
+  let sT;
+  $('sq').addEventListener('input', () => { clearTimeout(sT); sT = setTimeout(search, 350); });
+  async function search(){
+    const q = $('sq').value.trim();
+    if (q.length < 2){ $('sres').innerHTML = `<p class="hint">${t('searchHint')}</p>`; return; }
+    const r = await api('search', { q }); if (!r) return;
+    const grp = (title, list) => list && list.length ? `<div class="sec">${title}</div>` + list.map(x => `<div class="it" data-u="${esc(x.id)}"><span class="n"></span><span class="lg">${logo(x.logo, x.name)}</span><span style="min-width:0"><div class="nm">${esc(x.name)}</div><div class="sb">${esc(x.sub || '')}</div></span><span class="go">▶</span></div>`).join('') : '';
+    $('sres').innerHTML = (grp(t('liveTV'), r.live) + grp(t('movies'), r.movie) + grp(t('series'), r.series)) || `<p class="hint">${t('none')}</p>`;
+  }
+  $('sres').addEventListener('click', e => { const it = e.target.closest('[data-u]'); if (it) playOnTv(it.dataset.u); });
+
+  // ---- Maçlar ----
+  async function loadMatches(cc){
+    $('mlist').innerHTML = `<p class="hint">${t('scanning')}</p>`;
+    const r = await api('matches', { cc }); if (!r) return;
+    if (r.error === 'xt'){ $('mlist').innerHTML = `<p class="hint">${t('xt')}</p>`; return; }
+    $('mcc').innerHTML = (r.countries || []).map(c => `<option value="${esc(c.cc)}" ${c.cc === r.cc ? 'selected' : ''}>${esc(c.flag)} ${esc(c.name)}</option>`).join('');
+    if (r.loading){ setTimeout(() => loadMatches(r.cc), 2500); return; }
+    const now = Date.now() / 1000;
+    $('mlist').innerHTML = (r.items || []).map(m => { const live = m.start <= now; return `<div class="m"><div class="tm">${live ? `<span class="lv">${t('live')}</span>` : hm(m.start)}<small>${live ? '' : (m.start - now > 86400 - new Date().getHours() * 3600 ? t('tomorrow') : t('today'))}</small></div><div style="min-width:0"><div class="ti">${esc(m.name)}</div><div class="su">${esc([m.league, m.chan].filter(Boolean).join(' · '))}</div></div>${live ? `<button class="w" data-mk="${esc(m.key)}" data-a="watch">${t('watch')}</button>` : `<button data-mk="${esc(m.key)}" data-a="remind">${m.reminded ? t('reminded') : t('remind')}</button>`}</div>`; }).join('') || `<p class="hint">${t('noMatch')}</p>`;
+  }
+  $('mcc').addEventListener('change', () => loadMatches($('mcc').value));
+  $('mlist').addEventListener('click', async e => { const b = e.target.closest('[data-mk]'); if (!b) return; buzz(); const r = await api('match', { key:b.dataset.mk, act:b.dataset.a });
+    if (r && r.ok){ if (b.dataset.a === 'watch'){ toast(t('openedTv')); setTimeout(poll, 600); } else b.textContent = r.reminded ? t('reminded') : t('remind'); } });
+})();
+</script>
+</body>
+</html>
