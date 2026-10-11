@@ -542,7 +542,7 @@ html.tv .pill:focus{transform:scale(1.06)}
 @media (min-width:861px){.app.ts-on:not(.nosidebar) #mvBtn,.app.ts-on:not(.nosidebar) #mute,.app.ts-on:not(.nosidebar) #fs{display:none}}
 
 /* Senin için */
-.fy{position:relative;z-index:2;padding:14px 3vw 0;max-width:calc(100% - 190px)}
+.fy{position:relative;z-index:2;padding:14px 3vw 0;max-width:calc(100vw - 190px);min-width:0;overflow:hidden}
 .fy-h{font:800 12px var(--display);color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px 2px}
 .fy-row{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 10px;scrollbar-width:none}
 .fy-row::-webkit-scrollbar{display:none}
@@ -553,6 +553,8 @@ html.tv .pill:focus{transform:scale(1.06)}
 .fy-c .sb{display:block;font-size:11.5px;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fy-c:focus,.fy-c:hover{outline:3px solid #fff;outline-offset:2px;transform:scale(1.04);background:rgba(0,0,0,.6)}
 html.has-fy .home{grid-template-rows:auto 1fr auto auto}
+.home{grid-template-columns:minmax(0,1fr)}
+.fy-row{min-width:0;max-width:100%}
 html.has-fy .tile{aspect-ratio:1/0.92}
 @media (max-width:760px){.fy{max-width:100%}}
 .kleft{font-weight:800;font-size:13px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.2);align-self:center}
@@ -1207,7 +1209,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, homeLive:true, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYou:true, kidsLimit:0, checkin:true, quality:'max', liveWidth:'w', timeshift:true, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, homeLive:true, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, quality:'max', liveWidth:'w', timeshift:true, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -4000,7 +4002,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'button', label:'Tema', desc:() => `Seçili: ${themeById(store.get('theme','red')).name}. Renkler, manzaralar, futbol renkleri, spor ve kendi resminiz.`, action:'Tema galerisi', run:() => openThemes('settings') },
       { type:'select', key:'clock24', label:'Saat biçimi', options:[[true,'24 saat (21:30)'],[false,'12 saat (9:30 PM)']] },
       { type:'select', key:'posterCols', num:true, label:'Film ve dizi afiş boyutu', desc:'Bir satırda kaç afiş görüneceği.', options:[[3,'Büyük (3 afiş)'],[4,'Orta (4 afiş)'],[5,'Küçük (5 afiş)'],[6,'Çok küçük (6 afiş)']] },
-      { type:'toggle', key:'forYou', label:'Ana ekranda "Senin için" önerileri', desc:'Yarım kalanlar, maçlar, bu saatte sık izledikleriniz ve yeni başlayan programlar. Öneriler yalnızca bu cihazda öğrenilir.', after:() => renderForYou() },
+      { type:'toggle', key:'forYouOn', label:'Ana ekranda "Senin için" önerileri', desc:'Yarım kalanlar, maçlar, bu saatte sık izledikleriniz ve yeni başlayan programlar. Öneriler yalnızca bu cihazda öğrenilir.', after:() => renderForYou() },
       { type:'toggle', key:'homeLive', label:'Ana ekranda son kanalı oynat', desc:'Uygulama açılınca ana ekranın arkasında son izlediğiniz kanal oynar. Yetişkin, kilitli ve gizli kanallar oynatılmaz.', after:() => bgLiveSync() },
       { type:'toggle', key:'bgSound', label:'Arka plandaki kanalın sesi', desc:'Kapalıyken ana ekrandaki kanal sessiz oynar.', after:() => bgLiveSync() },
       { type:'toggle', key:'homeInfo', label:'Ana ekranda cihaz ve hesap bilgisi', desc:'Sol alttaki cihaz kimliği, aktif liste ve bitiş tarihi kutusu.' },
@@ -4425,7 +4427,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   function fyPlay(c){ openCat('live'); play(c); $('player').classList.add('nosidebar'); }
   function renderForYou(){
-    const on = cfg.forYou !== false && (channels.length > 0);
+    const on = cfg.forYouOn === true && (channels.length > 0);
     fyItems = on ? buildForYou() : [];
     const show = fyItems.length > 0;
     $('fy').classList.toggle('hidden', !show);
