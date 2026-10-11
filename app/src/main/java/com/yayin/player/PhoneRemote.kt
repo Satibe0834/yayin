@@ -84,7 +84,7 @@ class PhoneRemote(private val ctx: Context, private val handle: (String) -> Stri
         override fun serve(session: IHTTPSession): Response {
             return when (session.uri) {
                 "/", "/index.html" -> {
-                    val html = try { ctx.assets.open("remote.html").bufferedReader().use { it.readText() } } catch (_: Exception) { "Yayın" }
+                    val html = try { ctx.assets.open("remote.html").bufferedReader().use { it.readText() } } catch (_: Exception) { "PersetTV" }
                     newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", html).also { it.addHeader("Cache-Control", "no-store") }
                 }
                 "/api" -> {

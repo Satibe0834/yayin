@@ -85,7 +85,7 @@ class RemoteSetup(private val onData: (String) -> Unit) {
     companion object {
         private val PAGE = """
 <!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Yayın · Telefonla kurulum</title>
+<title>PersetTV · Telefonla kurulum</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,sans-serif;background:#140A0D;color:#F5ECEE;padding:24px 18px}
 h1{font-size:26px;margin:0 0 4px}p{color:#B39CA1;margin:0 0 18px}
@@ -99,7 +99,7 @@ input{width:100%;font-size:17px;padding:13px 14px;border-radius:12px;border:1px 
 .err{color:#FF6B70;margin-top:10px;min-height:1em}
 </style></head><body>
 <div id="form">
-<h1>📺 Yayın</h1><p>Bilgileri yazıp gönderin, TV'deki uygulama hemen giriş yapar.</p>
+<h1>📺 PersetTV</h1><p>Bilgileri yazıp gönderin, TV'deki uygulama hemen giriş yapar.</p>
 <div class="tabs"><button id="tx" class="on" type="button">Xtream Codes</button><button id="tm" type="button">M3U listesi</button></div>
 <div id="px"><label>Sunucu adresi</label><input id="s" placeholder="http://ornek.com:8080" autocapitalize="off" autocorrect="off" spellcheck="false">
 <label>Kullanıcı adı</label><input id="u" autocapitalize="off" autocorrect="off" spellcheck="false">

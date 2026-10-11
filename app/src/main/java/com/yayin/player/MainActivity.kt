@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
 
     private fun saveCrash(text: String) {
         try {
-            crashFile.writeText("${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · Yayın ${BuildConfig.VERSION_NAME}\n\n$text")
+            crashFile.writeText("${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · PersetTV ${BuildConfig.VERSION_NAME}\n\n$text")
         } catch (_: Exception) {}
     }
 
