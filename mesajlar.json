@@ -1,0 +1,16 @@
+{
+  "yoklama": {
+    "link": ""
+  },
+  "mesajlar": [
+    {
+      "id": "1",
+      "kime": "herkes",
+      "emoji": "👋",
+      "baslik": "Hoş geldiniz!",
+      "metin": "Yayın uygulaması artık size mesaj gönderebiliyor. Bir sorun olursa bana yazın.",
+      "kimden": "Satı",
+      "bitis": "2026-12-31"
+    }
+  ]
+}
