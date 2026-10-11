@@ -1,22 +1,16 @@
 {
+  "kimden": "Satı",
+  "tablo": "https://docs.google.com/spreadsheets/d/e/2PACX-1vTyvw40jeuH9Uv3ebcd9fKGsN0d0tZbK3Fn5wat7jo4j4rEdb4wjggNjXjD1OtRgGxP94tAhTcuKSL4/pub?gid=1625475856&single=true&output=csv",
   "yoklama": {
     "link": "https://docs.google.com/forms/d/e/1FAIpQLSevlLl_e7zWXOmtDzhgXUEzPf8YG1Kk93pY5lG7xilLp6IF8g/viewform?usp=pp_url&entry.335489713=AD&entry.971708493=KIMLIK&entry.1319271011=SURUM"
   },
-  "mesajlar": [    {
-      "id": "2",
-      "kime": "BenumEv",
-      "emoji": "💬",
-      "baslik": "Merhaba!",
-      "metin": "Cay Bitti mi?.",
-      "kimden": "Satı"
-    },
+  "mesajlar": [
     {
       "id": "1",
       "kime": "herkes",
       "emoji": "👋",
       "baslik": "Hoş geldiniz!",
       "metin": "Yayın uygulaması artık size mesaj gönderebiliyor. Bir sorun olursa bana yazın.",
-      "kimden": "Satı",
       "bitis": "2026-12-31"
     }
   ]
