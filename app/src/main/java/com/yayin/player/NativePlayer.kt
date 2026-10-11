@@ -96,7 +96,7 @@ class NativePlayer(
     private var subLang = ""
     private var subScale = 1f
     private var quality = "max"
-    private var tsEnabled = true
+    private var tsEnabled = false
     private var tsKeepMin = 30
 
     var player: ExoPlayer = buildPlayer()
@@ -286,7 +286,7 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         quality = o.optString("quality", "max")
-        tsEnabled = o.optBoolean("timeshift", true)
+        tsEnabled = o.optBoolean("timeshift", false)
         tsKeepMin = o.optInt("tsMinutes", 30).coerceIn(5, 120)
         subLang = o.optString("subLang", "")
         subScale = when (o.optString("subSize", "normal")) { "small" -> 0.8f; "large" -> 1.3f; "xlarge" -> 1.6f; else -> 1f }
