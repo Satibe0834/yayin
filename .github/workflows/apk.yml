@@ -7,6 +7,12 @@ on:
 permissions:
   contents: write
 
+# Dağıtım deposu: kod içermez, yalnızca APK ve mesajlar.json bulunur (herkese açık).
+# RELEASE_TOKEN tanımlı değilse her şey eskisi gibi bu depodan yürür.
+env:
+  DIST_REPO: Satibe0834/persettv
+  HAS_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,7 +29,6 @@ jobs:
           gradle-version: "8.7"
 
       # Kalıcı imza anahtarı: yalnızca ilk seferde oluşturulup depoya kaydedilir.
-      # Böylece her yeni sürüm eskisinin üzerine (silmeden) kurulabilir.
       - name: İmza anahtarı
         run: |
           if [ ! -f app/release.keystore ]; then
@@ -37,7 +42,11 @@ jobs:
           fi
 
       - name: APK derle
+        env:
+          # Cihazlar güncellemeleri ve mesajları buradan okur
+          UPDATE_REPO: ${{ env.HAS_TOKEN == 'true' && env.DIST_REPO || github.repository }}
         run: |
+          echo "Güncelleme deposu: $UPDATE_REPO"
           gradle assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk yayin.apk
 
@@ -46,9 +55,21 @@ jobs:
           name: yayin-apk
           path: yayin.apk
 
+      # Bu depoya (geçiş döneminde eski cihazlar buradan günceller)
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: Yayın 1.${{ github.run_number }}
+          name: PersetTV 1.${{ github.run_number }}
+          files: yayin.apk
+          make_latest: true
+
+      # Herkese açık dağıtım deposuna
+      - uses: softprops/action-gh-release@v2
+        if: env.HAS_TOKEN == 'true'
+        with:
+          repository: ${{ env.DIST_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v${{ github.run_number }}
+          name: PersetTV 1.${{ github.run_number }}
           files: yayin.apk
           make_latest: true
