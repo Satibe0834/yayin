@@ -443,6 +443,19 @@ class MainActivity : ComponentActivity() {
         // ---- Sesli arama ----
         @JavascriptInterface fun voiceSearch() = runOnUiThread { startVoice() }
 
+        // ---- Aile mesajları: Google E-Tablo / GitHub dosyasını oku (tarayıcı engellerse) ----
+        @JavascriptInterface fun httpGet(url: String): String {
+            val ok = url.startsWith("https://docs.google.com/") || url.startsWith("https://raw.githubusercontent.com/")
+            if (!ok) return ""
+            return try {
+                val c = okhttp3.OkHttpClient.Builder().connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS).followRedirects(true).followSslRedirects(true).build()
+                c.newCall(okhttp3.Request.Builder().url(url).header("Cache-Control", "no-cache").build()).execute().use { r ->
+                    if (!r.isSuccessful) "" else (r.body?.string() ?: "").take(300_000)
+                }
+            } catch (_: Exception) { "" }
+        }
+
         // ---- Telefon kumandası ----
         @JavascriptInterface fun phoneStart(): String = phone.start()
         @JavascriptInterface fun phoneStop() { phone.stop() }

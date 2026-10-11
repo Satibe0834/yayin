@@ -4488,20 +4488,64 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   const devName = () => lsGet('yayin:devName', '');
   const setDevName = n => { try { localStorage.setItem('yayin:devName', JSON.stringify(String(n || '').trim().slice(0, 40))); } catch {} };
   const msgRepo = () => (upd.info && upd.info.repo) || '';
-  let msgQueue = [];
+  let msgQueue = [], openMsgId = null;
+  async function getText(url){
+    try { const r = await fetch(url, { cache:'no-store' }); if (r.ok) return await r.text(); } catch {}
+    // Tarayıcı engellerse Android tarafından oku
+    try { if (APP && APP.httpGet){ const t = APP.httpGet(url); if (t) return t; } } catch {}
+    return null;
+  }
   async function fetchMessages(){
     const repo = msgRepo(); if (!repo) return null;
     for (const br of ['main', 'master']){
-      try {
-        const r = await fetch(`https://raw.githubusercontent.com/${repo}/${br}/mesajlar.json?t=${Date.now()}`, { cache:'no-store' });
-        if (r.ok){
-          // Elle düzenlemede sık yapılan hatalara (sondaki virgül, akıllı tırnak) karşı hoşgörülü oku
-          const txt = (await r.text()).replace(/^\uFEFF/, '').replace(/[“”]/g, '"').replace(/,\s*([\]}])/g, '$1');
-          try { return JSON.parse(txt); } catch { console.warn('mesajlar.json okunamadı'); return null; }
-        }
-      } catch {}
+      const raw = await getText(`https://raw.githubusercontent.com/${repo}/${br}/mesajlar.json?t=${Date.now()}`);
+      if (raw == null) continue;
+      // Elle düzenlemede sık yapılan hatalara (sondaki virgül, akıllı tırnak) karşı hoşgörülü oku
+      const txt = raw.replace(/^\uFEFF/, '').replace(/[“”]/g, '"').replace(/,\s*([\]}])/g, '$1');
+      try { return JSON.parse(txt); } catch { console.warn('mesajlar.json okunamadı'); return null; }
     }
     return null;
+  }
+  // ---- Google E-Tablo'dan mesajlar (Kime | Başlık | Mesaj | Bitiş) ----
+  function parseCsv(t){
+    const rows = []; let row = [], f = '', q = false;
+    t = t.replace(/^\uFEFF/, '');
+    for (let i = 0; i < t.length; i++){
+      const ch = t[i];
+      if (q){ if (ch === '"'){ if (t[i + 1] === '"'){ f += '"'; i++; } else q = false; } else f += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === ','){ row.push(f); f = ''; }
+      else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && t[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+      else f += ch;
+    }
+    if (f !== '' || row.length){ row.push(f); rows.push(row); }
+    return rows;
+  }
+  function parseDay(s){
+    s = String(s || '').trim(); if (!s) return null;
+    let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/); if (m) return new Date(+m[3], +m[2] - 1, +m[1], 23, 59, 59);
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59);
+    return null;
+  }
+  const strHash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  async function fetchSheetMessages(url){
+    if (!url) return [];
+    const txt = await getText(url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()); if (!txt || /^\s*</.test(txt)) return [];
+    const rows = parseCsv(txt).filter(r => r.some(c => c.trim()));
+    if (!rows.length) return [];
+    const head = rows[0].map(h => nrm(h.trim()));
+    const col = (...names) => head.findIndex(h => names.some(n => h === n || h.startsWith(n)));
+    let ci = { kime:col('kime','to','alici'), baslik:col('baslik','başlık','title','konu'), metin:col('mesaj','metin','message','text'), bitis:col('bitis','bitiş','son','until','end'), emoji:col('emoji'), kimden:col('kimden','from','gonderen','gönderen') };
+    let body = rows.slice(1);
+    if (ci.metin < 0){ ci = { kime:0, baslik:1, metin:2, bitis:3, emoji:-1, kimden:-1 }; body = rows; }   // başlık satırı yoksa sırayla
+    const get = (r, i) => i >= 0 ? String(r[i] || '').trim() : '';
+    return body.map(r => {
+      const kime = get(r, ci.kime), baslik = get(r, ci.baslik), metin = get(r, ci.metin), bitisS = get(r, ci.bitis);
+      if (!metin && !baslik) return null;
+      const end = parseDay(bitisS);
+      return { id:'t:' + strHash([kime, baslik, metin, bitisS].join('|')), kime:kime ? kime.split(/\s*[,;]\s*/) : 'herkes', baslik, metin,
+        emoji:get(r, ci.emoji) || '💬', kimden:get(r, ci.kimden), _end:end };
+    }).filter(Boolean);
   }
   function forMe(to){
     if (to == null || to === '') return true;
@@ -4512,8 +4556,12 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   async function checkMessages(){
     const j = await fetchMessages(); if (!j) return;
     const seen = msgSeen(), now = new Date();
-    msgQueue = (j.mesajlar || j.messages || []).filter(m => m && m.id != null && !seen.has(String(m.id)) && forMe(m.kime != null ? m.kime : m.to)
-      && (!m.bitis || new Date(m.bitis + 'T23:59:59') >= now) && (!m.baslangic || new Date(m.baslangic + 'T00:00:00') <= now));
+    const fromSheet = await fetchSheetMessages(j.tablo || j.sheet);
+    fromSheet.forEach(m => { if (!m.kimden && j.kimden) m.kimden = j.kimden; });
+    const all = [...(j.mesajlar || j.messages || []), ...fromSheet];
+    msgQueue = all.filter(m => m && m.id != null && !seen.has(String(m.id)) && forMe(m.kime != null ? m.kime : m.to)
+      && (m._end ? m._end >= now : (!m.bitis || (parseDay(m.bitis) || new Date(m.bitis + 'T23:59:59')) >= now)) && (!m.baslangic || new Date(m.baslangic + 'T00:00:00') <= now));
+    if ($('msgDlg').open && msgQueue.length && openMsgId && msgQueue[0].id !== openMsgId){ const i = msgQueue.findIndex(m => m.id === openMsgId); if (i > 0) msgQueue.unshift(...msgQueue.splice(i, 1)); }
     showNextMsg();
     checkin(j.yoklama);
   }
@@ -4521,7 +4569,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (!msgQueue.length || $('msgDlg').open) return;
     // Film oynarken, çocuk kilidinde ya da profil seçiminde bekle
     if (nativeVodOpen || !$('kidsLock').classList.contains('hidden') || !$('profs').classList.contains('hidden') || document.querySelector('dialog[open]')){ setTimeout(showNextMsg, 10000); return; }
-    const m = msgQueue[0];
+    const m = msgQueue[0]; openMsgId = m.id;
     $('msgIcon').textContent = m.emoji || '💬';
     $('msgTitle').textContent = m.baslik || m.title || '';
     $('msgText').textContent = m.metin || m.text || '';
@@ -4575,7 +4623,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     }
     checkMessages();
   }
-  if (APP){ setTimeout(startMessages, 8000); setInterval(checkMessages, 30 * 60e3); }
+  if (APP){ setTimeout(startMessages, 8000); setInterval(checkMessages, 10 * 60e3); }
 
   // ---------- Boot ----------
   async function bootXtream(){
