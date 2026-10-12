@@ -1,0 +1,79 @@
+name: APK oluştur
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Dağıtım deposu: kod içermez, yalnızca APK ve mesajlar.json bulunur (herkese açık).
+# RELEASE_TOKEN tanımlı değilse her şey eskisi gibi bu depodan yürür.
+env:
+  DIST_REPO: Satibe0834/persettv
+  HAS_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      # Kalıcı imza anahtarı: yalnızca ilk seferde oluşturulup depoya kaydedilir.
+      - name: İmza anahtarı
+        run: |
+          if [ ! -f app/release.keystore ]; then
+            keytool -genkeypair -v -keystore app/release.keystore -alias yayin -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass yayin-imza -keypass yayin-imza -dname "CN=Yayin, O=Yayin, C=TR"
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add app/release.keystore
+            git commit -m "Kalıcı imza anahtarı [skip ci]"
+            git push
+          fi
+
+      - name: APK derle
+        env:
+          # Cihazlar güncellemeleri ve mesajları buradan okur
+          UPDATE_REPO: ${{ env.HAS_TOKEN == 'true' && env.DIST_REPO || github.repository }}
+        run: |
+          echo "Güncelleme deposu: $UPDATE_REPO"
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk yayin.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yayin-apk
+          path: yayin.apk
+
+      # Bu depoya (eski cihazlar için). Ön sürüm: yalnızca onaylananlar "latest" olur.
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: PersetTV 1.${{ github.run_number }}
+          files: yayin.apk
+          prerelease: true
+          make_latest: false
+
+      # Herkese açık dağıtım deposuna
+      - uses: softprops/action-gh-release@v2
+        if: env.HAS_TOKEN == 'true'
+        with:
+          repository: ${{ env.DIST_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v${{ github.run_number }}
+          name: PersetTV 1.${{ github.run_number }} (deneme)
+          files: yayin.apk
+          # Önce "deneme" olarak yayınlanır: yalnızca "Deneme sürümlerini al" açık cihazlar görür.
+          # Aileye göndermek için GitHub'da sürümü düzenleyip "Set as the latest release" seçin.
+          prerelease: true
+          make_latest: false

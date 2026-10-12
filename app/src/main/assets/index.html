@@ -589,6 +589,11 @@ html.has-fy .tile{aspect-ratio:1/0.92}
 .mark{gap:4px}
 .mark .globe{width:104px;height:82px;margin:-22px -10px -22px -14px;flex:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
 
+/* TV: bulanıklık efekti kapalı (Fire TV'de kaydırmayı takıltır); yerine biraz daha koyu cam */
+html.tv *, html.tv *::before, html.tv *::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.tv.live-tp.tp-glass .cats,html.tv.live-tp.tp-glass .side,html.tv.live-tp.tp-glass .bar,html.tv.live-tp.tp-glass .epgp{background:rgba(0,0,0,.6)}
+html.tv .mark .globe{filter:none}
+
 /* Yayın kalitesi rozetleri */
 .qb{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font:800 11px/1.5 var(--ui);color:var(--text);background:rgba(255,255,255,.06);white-space:nowrap}
 .qb.q{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff)}
@@ -1699,12 +1704,25 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     requestAnimationFrame(fxLoop);
     const dt = Math.min(.1, (now - (fx.last || now)) / 1000);
     if (IS_TV && now - fx.last < 30) return;
+    if (navBusy){ fx.last = now; return; }   // gezinirken son kare donar, işlemci menüye kalır
     fx.last = now;
     if (!fxVisible()){ if (!fx.cleared){ fx.g.clearRect(0, 0, fx.w, fx.h); fx.cleared = true; } return; }
     fx.cleared = false; fx.g.clearRect(0, 0, fx.w, fx.h);
     const m = AM(), t = now / 1000;
     for (const f of fx.list) f(fx.g, dt, t, m);
   }
+  // ---- Kumandayla gezinirken ağır animasyonları duraklat ----
+  let navBusy = false, navT = null;
+  const globes = () => document.querySelectorAll('svg.globe');
+  addEventListener('keydown', e => {
+    if (!/^Arrow|^Page/.test(e.key)) return;
+    if (!navBusy){ navBusy = true; globes().forEach(g => { try { g.pauseAnimations(); } catch {} }); }
+    clearTimeout(navT);
+    navT = setTimeout(() => {
+      navBusy = false;
+      if (cfg.motion !== false) globes().forEach(g => { try { g.unpauseAnimations(); } catch {} });
+    }, 1200);
+  }, true);
   applyTheme(store.get('theme','red'));
 
   // ---- Galeri ----
@@ -3305,7 +3323,13 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   function moveCursor(d){
     if (!view.length) return;
     cursorI = Math.max(0, Math.min(view.length - 1, cursorI + d));
-    ensureCursor(); renderRows(true); updateEpgPanel();
+    const st = list.scrollTop; ensureCursor();
+    // Sadece vurguyu taşı; görünen pencere değiştiyse (kaydırma) satırları yeniden çiz
+    const old = inner.querySelector('.ch.cur'); if (old) old.classList.remove('cur');
+    const row = inner.querySelector(`.ch[data-i="${cursorI}"]`);
+    if (row && cursorOn() && lz === 'chans') row.classList.add('cur');
+    if (!row || list.scrollTop !== st) renderRows(false);
+    updateEpgPanel();
   }
   function showPreview(c){ $('pv').classList.remove('hidden'); $('pvLbl').textContent = 'Önizleme · ' + c.name + ' · OK ile aç'; auxPlay(0, c.url, $('pv'), true); requestAnimationFrame(auxSync); }
   function hidePreview(keepTimer){ if (!keepTimer) clearTimeout(pvT); if (!$('pv').classList.contains('hidden')){ $('pv').classList.add('hidden'); auxStop(0); } }
