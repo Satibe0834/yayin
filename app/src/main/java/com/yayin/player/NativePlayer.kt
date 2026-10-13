@@ -499,6 +499,8 @@ class NativePlayer(
     fun playVod(json: String, index: Int, startMs: Long) {
         vodItems = try { JSONArray(json) } catch (_: Exception) { return }
         stopTimeshift()
+        // Canlı kanal için FFmpeg kapatılmış olabilir: filmlerde AC3/DTS ses için her zaman yeniden aç
+        setFfmpegForChannel(false)
         triedAsHls = false
         vodTried.clear(); vodUa = userAgent; lastProbe = null
         if (vodItems.length() == 0) return

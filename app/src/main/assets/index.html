@@ -2335,7 +2335,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   function startStream(c){
     if (current !== c) return;
     if (NATIVE){
-      if (c.kind === 'live'){ recState = Object.assign({ url:c.url, tried:[] }, recipeOf(c)); liveStart(c, recState, false); }
+      if (c.kind === 'live'){ recState = Object.assign({ url:c.url, tried:[] }, recipeOf(c)); openT0 = performance.now(); openFor = c.url; liveStart(c, recState, false); }
       else NATIVE.nativeLive(c.url);
       NATIVE.nativeMute(v.muted); syncRect(); preconnectNeighbors(); return;
     }
@@ -3086,7 +3086,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (nativeVodOpen || $('player').classList.contains('hidden')) return;
     if (evt === 'info'){ setInfo(d); return; }
     if (evt === 'buffering'){ showMsg('load'); armStall(); }
-    else if (evt === 'playing'){ showMsg(null); $('play').textContent = '❚❚'; liveOk(); recoverOk(); }
+    else if (evt === 'playing'){ showMsg(null); $('play').textContent = '❚❚'; liveOk(); recoverOk(); openTimed(); }
     else if (evt === 'paused') $('play').textContent = '▶';
     else if (evt === 'error'){ lastErrCode = (d && d.code) || ''; fail(); }
   };
@@ -4570,7 +4570,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   // Sırayla: FFmpeg'siz dene, diğer yayın biçimini (TS↔HLS) dene; işe yarayan yöntem kanal için hatırlanır.
   let recipes = lsGet('yayin:recipes', {});
   const saveRecipes = () => { try { const k = Object.keys(recipes); if (k.length > 400) k.slice(0, k.length - 300).forEach(x => delete recipes[x]); localStorage.setItem('yayin:recipes', JSON.stringify(recipes)); } catch {} };
-  let recState = null;
+  let recState = null, openT0 = 0, openFor = '';
   const canSwapFmt = u => /\.(ts|m3u8)(\?|$)/i.test(u);
   const swapFmt = u => /\.ts(\?|$)/i.test(u) ? u.replace(/\.ts(\?|$)/i, '.m3u8$1') : u.replace(/\.m3u8(\?|$)/i, '.ts$1');
   const recipeOf = c => recipes[favKey(c)] || {};
@@ -4594,6 +4594,12 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     }
     if (recipes[favKey(current)]){ delete recipes[favKey(current)]; saveRecipes(); }
     return false;
+  }
+  function openTimed(){
+    if (!openFor || !current || current.url !== openFor) return;
+    const ms = performance.now() - openT0; openFor = '';
+    if (ms > 4000 && document.visibilityState === 'visible')
+      reportIssue(`Yavaş açıldı: ${current.name} – ${(ms / 1000).toFixed(1).replace('.', ',')} sn (${/\.m3u8/i.test(recipeUrl(current, recState)) ? 'HLS' : 'MPEG-TS'})`);
   }
   function recoverOk(){
     if (!recState || !current || recState.url !== current.url || !recState.recovering) return;
