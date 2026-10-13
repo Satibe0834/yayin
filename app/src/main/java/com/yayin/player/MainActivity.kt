@@ -473,6 +473,8 @@ class MainActivity : ComponentActivity() {
         }
         @JavascriptInterface fun nativeVodCmd(cmd: String) = runOnUiThread { native.vodCmd(cmd) }
         @JavascriptInterface fun nativeTs(cmd: String, arg: Double) = runOnUiThread { native.tsCmd(cmd, arg.toLong()) }
+        @JavascriptInterface fun ffmpegState(): String = try { native.ffmpegState() } catch (_: Exception) { "missing" }
+        @JavascriptInterface fun ffmpegRetry() = runOnUiThread { native.ffmpegRetry() }
         @JavascriptInterface fun nativeLiveEx(url: String, noFfmpeg: Boolean, retry: Boolean) = runOnUiThread { native.playLiveEx(url, noFfmpeg, retry) }
         /** Son çökmenin kısa özeti (bir kez verilir), uzaktan hata raporu için. */
         @JavascriptInterface fun takeLastCrash(): String {

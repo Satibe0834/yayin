@@ -156,6 +156,38 @@ class NativePlayer(
     }
 
     private var mainFfmpegIndex = -1
+    private var audioWarned = false
+
+    /** Filmde ses parçası var ama hiçbir çözücü oynatamıyorsa kullanıcıya söyle ve arayüze bildir. */
+    private fun checkAudio(tracks: Tracks) {
+        if (mode != Mode.VOD || audioWarned) return
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audio.isEmpty() || audio.any { it.isSelected }) return
+        audioWarned = true
+        val f = audio[0].getTrackFormat(0)
+        val desc = (f.sampleMimeType ?: "?").substringAfter('/') + (if (f.channelCount > 0) " " + f.channelCount + "ch" else "")
+        val ff = mainFfmpegIndex >= 0
+        android.widget.Toast.makeText(activity,
+            "Ses biçimi çözülemedi: " + desc + (if (ff) "" else " (FFmpeg bu cihazda kapalı)"), android.widget.Toast.LENGTH_LONG).show()
+        emit("noAudio", JSONObject().put("fmt", desc).put("ffmpeg", ff))
+    }
+
+    /** FFmpeg durumu: ok / off (ayardan kapalı) / crash (çökme sonrası kapatıldı) / missing (kütüphane yok) */
+    fun ffmpegState(): String {
+        val prefs = activity.getSharedPreferences("yayin", android.content.Context.MODE_PRIVATE)
+        return when {
+            ffmpegMode == "off" -> "off"
+            prefs.getBoolean("ffmpegBroken", false) -> "crash"
+            !YayinRenderers.ffmpegUsable() -> "missing"
+            else -> "ok"
+        }
+    }
+
+    /** Çökme sonrası kapatılan FFmpeg'i yeniden etkinleştir. */
+    fun ffmpegRetry() {
+        activity.getSharedPreferences("yayin", android.content.Context.MODE_PRIVATE).edit().remove("ffmpegBroken").apply()
+        rebuild()
+    }
 
     /** Yalnızca bu kanal için FFmpeg ses çözücüsünü kapat/aç (oynatıcıyı yeniden kurmadan). */
     private fun setFfmpegForChannel(off: Boolean) {
@@ -229,7 +261,7 @@ class NativePlayer(
 
             // Yayının çözünürlük / biçim bilgisi arayüze gitsin
             override fun onVideoSizeChanged(videoSize: VideoSize) { emitInfo() }
-            override fun onTracksChanged(tracks: Tracks) { emitInfo() }
+            override fun onTracksChanged(tracks: Tracks) { emitInfo(); checkAudio(tracks) }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 emit(if (isPlaying) "playing" else "paused")
@@ -501,6 +533,9 @@ class NativePlayer(
         stopTimeshift()
         // Canlı kanal için FFmpeg kapatılmış olabilir: filmlerde AC3/DTS ses için her zaman yeniden aç
         setFfmpegForChannel(false)
+        // Ana ekrandaki arka plan kanalı sessize alınmış olabilir: film kendi ses seviyesiyle başlasın
+        player.volume = lastVolume
+        audioWarned = false
         triedAsHls = false
         vodTried.clear(); vodUa = userAgent; lastProbe = null
         if (vodItems.length() == 0) return
