@@ -1249,7 +1249,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, homeLive:true, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, betaUpdates:false, perf:false, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:true, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:true, bgSound:true, homeLive:true, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -3821,15 +3821,9 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (!canUpdate()){ if (manual) toast('Güncelleme yalnızca GitHub\'da derlenen Android uygulamasında çalışır'); return; }
     upd.status = 'checking'; upd.msg = ''; updRefresh();
     try {
-      // Deneme sürümü açıksa ön sürümler de dahil en yenisi; değilse yalnızca "kararlı" (latest) sürüm
-      const beta = cfg.betaUpdates === true;
-      const r = await fetch(`https://api.github.com/repos/${upd.info.repo}/releases${beta ? '?per_page=15' : '/latest'}`, { headers:{ Accept:'application/vnd.github+json' }, cache:'no-store' });
+      const r = await fetch(`https://api.github.com/repos/${upd.info.repo}/releases/latest`, { headers:{ Accept:'application/vnd.github+json' }, cache:'no-store' });
       if (!r.ok) throw new Error(r.status === 404 ? 'Henüz yayımlanmış sürüm yok' : 'GitHub ' + r.status + ' hatası verdi');
-      let j = await r.json();
-      if (beta){
-        const num = x => parseInt(String(x.tag_name || '').replace(/\D/g, ''), 10) || 0;
-        j = (Array.isArray(j) ? j : []).filter(x => !x.draft && (x.assets || []).some(a => /\.apk$/i.test(a.name))).sort((a, b) => num(b) - num(a))[0] || {};
-      }
+      const j = await r.json();
       const n = parseInt(String(j.tag_name || '').replace(/\D/g, ''), 10) || 0;
       const a = (j.assets || []).find(x => /\.apk$/i.test(x.name));
       upd.latest = n; upd.url = a ? a.browser_download_url : ''; upd.notes = j.body || '';
@@ -4134,7 +4128,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       (upd.status === 'avail' || upd.status === 'perm' || upd.status === 'ready' || upd.status === 'install' || upd.status === 'err' && upd.url) && { type:'button', label:`Sürüm 1.${upd.latest} yükle`,
         desc:() => upd.status === 'ready' || upd.status === 'install' ? 'İndirildi. "Kur"a basınca Android\'in kurulum ekranı açılır; orada "Yükle / Install" deyin.' : 'İndirilir ve Android\'in kurulum ekranı açılır.',
         action: upd.status === 'ready' || upd.status === 'install' ? '📦 Kur' : 'Şimdi güncelle', run:startUpdate },
-      canUpdate() && { type:'toggle', key:'betaUpdates', label:'Deneme sürümlerini al', desc:'Yeni sürümleri herkesten önce alırsınız. Yalnızca yönetici cihazında açın; aile cihazları sadece onaylanmış (kararlı) sürümleri alır.', after:() => { upd.status = 'idle'; checkUpdate(true); } },
       { type:'toggle', key:'autoUpdate', label:'Açılışta güncellemeleri denetle', desc:'Yeni sürüm varsa ana ekranda haber verir (günde en fazla birkaç kez).', dis:() => !canUpdate() },
     ]},
     { id:'about', icon:'ℹ', title:'Hakkında', lead:'', rows:() => [
