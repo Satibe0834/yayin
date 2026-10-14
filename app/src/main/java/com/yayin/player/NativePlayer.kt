@@ -417,6 +417,9 @@ class NativePlayer(
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
         tStart = android.os.SystemClock.elapsedRealtime(); tHeaders = 0L; timingSent = false
+        // Canlı yayında Fire TV'den kare hızı değişikliği isteme: "Orijinal kare hızına uyarla"
+        // açıkken her kanal açılışında ekran modu yeniden kuruluyor ve 1-3 sn gecikme oluyordu.
+        player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
         player.setMediaItem(mediaItem(url))
         player.prepare()
         player.playWhenReady = true
@@ -556,6 +559,8 @@ class NativePlayer(
         setFfmpegForChannel(false)
         // Ana ekrandaki arka plan kanalı sessize alınmış olabilir: film kendi ses seviyesiyle başlasın
         player.volume = lastVolume
+        // Filmlerde kare hızı uyarlaması açık kalsın (daha akıcı hareket; açılıştaki kısa bekleme sorun değil)
+        player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
         audioWarned = false
         triedAsHls = false
         vodTried.clear(); vodUa = userAgent; lastProbe = null
