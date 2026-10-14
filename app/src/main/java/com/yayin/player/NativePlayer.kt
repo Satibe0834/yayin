@@ -80,12 +80,26 @@ class NativePlayer(
     // Bağlantıları açık tutan ortak HTTP istemcisi: komşu kanallara ön bağlantı
     // ve oynatıcı aynı bağlantı havuzunu kullanır, böylece geçişte TCP/TLS kurulumu beklenmez.
     private val http = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .eventListenerFactory(object : okhttp3.EventListener.Factory {
+            override fun create(call: okhttp3.Call): okhttp3.EventListener = netTimer
+        })
         .readTimeout(15, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .retryOnConnectionFailure(true)
         .build()
+
+    // ---- Kanal açılış süresi ölçümü: sunucu yanıtı / ilk görüntü ----
+    @Volatile private var tStart = 0L
+    @Volatile private var tHeaders = 0L
+    private var timingSent = true
+    private val netTimer = object : okhttp3.EventListener() {
+        override fun responseHeadersEnd(call: okhttp3.Call, response: okhttp3.Response) {
+            if (tStart > 0L && tHeaders == 0L && call.request().method == "GET" && response.code in 200..299)
+                tHeaders = android.os.SystemClock.elapsedRealtime()
+        }
+    }
 
     private val defaultUserAgent = "Yayin/${BuildConfig.VERSION_NAME} (Linux; Android) ExoPlayer"
     private var userAgent = defaultUserAgent
@@ -250,6 +264,12 @@ class NativePlayer(
     }
 
     private val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                if (timingSent || mode != Mode.LIVE || tStart == 0L) return
+                timingSent = true
+                val now = android.os.SystemClock.elapsedRealtime()
+                emit("timing", JSONObject().put("total", now - tStart).put("server", if (tHeaders > 0L) tHeaders - tStart else -1L))
+            }
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
                     Player.STATE_BUFFERING -> emit("buffering")
@@ -396,6 +416,7 @@ class NativePlayer(
         view.visibility = View.VISIBLE
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
+        tStart = android.os.SystemClock.elapsedRealtime(); tHeaders = 0L; timingSent = false
         player.setMediaItem(mediaItem(url))
         player.prepare()
         player.playWhenReady = true
