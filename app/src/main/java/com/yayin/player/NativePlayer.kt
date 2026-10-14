@@ -91,6 +91,8 @@ class NativePlayer(
         .build()
 
     // ---- Kanal açılış süresi ölçümü: sunucu yanıtı / ilk görüntü ----
+    @Volatile private var psiUrl: String? = null
+    @Volatile var psiFixEnabled = true
     @Volatile private var tStart = 0L
     @Volatile private var tHeaders = 0L
     private var timingSent = true
@@ -119,7 +121,9 @@ class NativePlayer(
 
     /** Verilen User-Agent ile istek yapan kaynak fabrikası (film sunucusu belirli oynatıcı isteyebilir). */
     private fun sourceFactory(ua: String): DefaultMediaSourceFactory {
-        val ds = OkHttpDataSource.Factory(http).setUserAgent(ua)
+        val http0 = OkHttpDataSource.Factory(http).setUserAgent(ua)
+        // Canlı MPEG-TS kanalında PAT+PMT'yi başa al: ilk tam kare atılmasın, görüntü hemen gelsin
+        val ds = DataSource.Factory { PsiFirstDataSource(http0.createDataSource()) { uri -> psiFixEnabled && uri.toString() == psiUrl } }
         val ex = DefaultExtractorsFactory()
             .setTsExtractorFlags(
                 DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
@@ -359,6 +363,7 @@ class NativePlayer(
         audioLang = o.optString("audioLang", "")
         quality = o.optString("quality", "max")
         tsEnabled = false   // Canlı geri sarma kaldırıldı (kanal açılışını yavaşlatıyordu)
+        psiFixEnabled = o.optBoolean("psiFix", true)
         tsKeepMin = o.optInt("tsMinutes", 30).coerceIn(5, 120)
         subLang = o.optString("subLang", "")
         subScale = when (o.optString("subSize", "normal")) { "small" -> 0.8f; "large" -> 1.3f; "xlarge" -> 1.6f; else -> 1f }
@@ -417,6 +422,7 @@ class NativePlayer(
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
         tStart = android.os.SystemClock.elapsedRealtime(); tHeaders = 0L; timingSent = false
+        psiUrl = if (isAdaptive(url)) null else url
         // Canlı yayında Fire TV'den kare hızı değişikliği isteme: "Orijinal kare hızına uyarla"
         // açıkken her kanal açılışında ekran modu yeniden kuruluyor ve 1-3 sn gecikme oluyordu.
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
