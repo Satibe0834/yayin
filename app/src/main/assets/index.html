@@ -4138,8 +4138,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'toggle', key:'autoUpdate', label:'Açılışta güncellemeleri denetle', desc:'Yeni sürüm varsa ana ekranda haber verir (günde en fazla birkaç kez).', dis:() => !canUpdate() },
     ]},
     { id:'about', icon:'ℹ', title:'Hakkında', lead:'', rows:() => [
-      APP && { type:'button', label:'Cihaz adı', desc:() => devName() ? `Bu cihaz: ${devName()}. Aile mesajları bu ada gönderilir.` : 'Henüz ad verilmedi. Aile mesajları için bir ad yazın.', action:'Değiştir', run:askDevName },
-      APP && { type:'toggle', key:'checkin', label:'Aile listesine yoklama ve sorun raporu', desc:'Günde bir kez cihaz adı, kimliği, sürümü ve dili; ayrıca açılmayan kanal/film ve çökme gibi sorunlar aile yöneticisinin listesine gönderilir. IPTV şifreniz ve izleme geçmişiniz gönderilmez.' },
       { type:'info', label:'Uygulama', value:() => 'PersetTV ' + (upd.info ? upd.info.name : (APP?.version?.() || 'web')) },
       { type:'info', label:'Platform', value:platform },
       { type:'info', label:'Oynatıcı', value:() => NATIVE ? 'Media3 ExoPlayer (donanım çözücü)' : 'Tarayıcı (hls.js / mpegts.js)' },
@@ -4622,6 +4620,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   // ================= UZAKTAN SORUN RAPORU (aile yöneticisinin tablosuna) =================
   let errLink = null; const errQueue = [];
   function reportIssue(text){
+    return;   // sorun raporları kaldırıldı
     if (cfg.checkin === false || !APP) return;
     text = String(text).slice(0, 400);
     const sent = lsGet('yayin:errSent', {}), now = Date.now(), day = new Date().toDateString();
@@ -4648,7 +4647,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     }
   }
   // Son açılışta çökme olduysa bildir
-  setTimeout(() => { try { const c = APP && APP.takeLastCrash ? APP.takeLastCrash() : ''; if (c) reportIssue('Uygulama çöktü: ' + c); } catch {} }, 5000);
+  setTimeout(() => { try { APP && APP.takeLastCrash && APP.takeLastCrash(); } catch {} }, 5000);   // eski çökme kaydını temizle
 
   // ================= İLK AÇILIŞ DİL SEÇİMİ =================
   function showLangDlg(){
@@ -4810,7 +4809,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     }
     checkMessages();
   }
-  if (APP){ setTimeout(startMessages, 8000); setInterval(checkMessages, 10 * 60e3); }
+  // Aile mesajları, ad sorusu ve günlük yoklama kaldırıldı (dışarıya hiçbir şey gönderilmez / okunmaz).
 
   // ---------- Boot ----------
   async function bootXtream(){
