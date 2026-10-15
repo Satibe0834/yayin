@@ -4328,7 +4328,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'info', label:'Platform', value:platform },
       { type:'info', label:'Oynatıcı', value:() => NATIVE ? 'Media3 ExoPlayer (donanım çözücü)' : 'Tarayıcı (hls.js / mpegts.js)' },
       { type:'info', label:'Cihaz kimliği', value:() => dev.id },
-      { type:'info', label:'Arka plan fotoğrafları', value:() => 'Pexels — yıldırım yiğit, Marek Piwnicki, zkadoshi, pfotenfotograf, peederopecta, Quang Nguyen Vinh, Pixabay, Mikhail Peace, valiphotos, liuguangxi, trksami, mutecevvil, Murat Marangoz, Özer Özçelik, Orhan Namlı, Özgür Sürmeli, Radosław Krupa, Sandy' },
       { type:'info', label:'Cihaz anahtarı', value:() => dev.key },
       { type:'info', label:'İçerik', value:() => { const n = {live:0,movie:0}; channels.forEach(c => n[c.kind] !== undefined && n[c.kind]++); return `${n.live} kanal · ${n.movie} film · ${(XT ? seriesAll || [] : getSeries()).length} dizi`; } },
       XT && xinfo && { type:'info', label:'Hesap oluşturma', value:() => fmtDate(xinfo.created_at) },
