@@ -1292,7 +1292,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'full', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming:false, psiFix:true, slideMin:10, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'full', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming2:false, psiFix:true, slideMin:10, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -3265,7 +3265,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   window.yayinNative = (evt, d) => {
     if (evt === 'upd'){ onUpdEvent(d); if (d && d.err) reportIssue('Güncelleme hatası: ' + d.err); return; }
     if (evt === 'timing'){
-      if (cfg.showTiming){
+      if (cfg.showTiming2){
         const f = ms => (ms / 1000).toFixed(1).replace('.', ',');
         toast(d.server >= 0 ? `⏱ ${f(d.total)} sn — sunucu ${f(d.server)} sn · görüntü ${f(d.total - d.server)} sn` : `⏱ ${f(d.total)} sn`);
       }
@@ -4221,6 +4221,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       XT && { type:'button', label:'Hesaptan çıkış yap', desc:'Favoriler ve izleme geçmişi korunur.', action:'Çıkış yap', danger:true, run:() => { if (logoutXtream()) renderSettings(); } },
     ]},
     { id:'play', icon:'▶', title:'Oynatma', lead:'Görüntü, ses, altyazı ve kanal geçiş davranışı.', rows:() => [
+      APP && { type:'toggle', key:'showTiming2', label:'Kanal açılış süresini göster', desc:'Her kanal açılışında süreyi ekranda gösterir: sunucunun ilk veriyi gönderme süresi ve cihazın görüntüyü hazırlama süresi. Yavaşlığın kaynağını bulmak için.' },
       { type:'select', key:'startup', label:'Açılışta', desc:'Uygulama açıldığında ilk ne gösterilsin?', options:[['home','Ana ekran'],['last','Son izlenen kanal'],['live','Canlı TV listesi']] },
       { type:'select', key:'zapDelay', num:true, label:'Kanal geçişi', desc:'Tuşa basılı tutunca ara kanallar yüklenmeden atlanır. "Anında" her basışta kanalı açar.', options:[[0,'Anında'],[180,'Hızlı (önerilen)'],[400,'Rahat']] },
       { type:'select', key:'aspect', label:'Görüntü oranı', desc:'Siyah boşluklu, kırpılmış ya da ekrana uzatılmış görüntü.', options:[['fit','Sığdır'],['zoom','Doldur (kırp)'],['fill','Uzat']] },
@@ -4230,7 +4231,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'select', key:'subLang', label:'Altyazı', desc:'Altyazısı olan içeriklerde varsayılan seçim.', native:true, options:[['','Otomatik'],['off','Kapalı'],['tr','Türkçe'],['en','İngilizce'],['de','Almanca'],['ar','Arapça']] },
       { type:'select', key:'subSize', label:'Altyazı boyutu', native:true, options:[['small','Küçük'],['normal','Normal'],['large','Büyük'],['xlarge','Çok büyük']] },
       APP && { type:'toggle', key:'psiFix', label:'Hızlı kanal açılışı (MPEG-TS)', desc:'Kanal açılınca sunucunun gönderdiği ilk tam kareyi kullanarak görüntüyü hemen başlatır. Bir kanalda sorun görürseniz kapatıp deneyin.', native:true },
-      APP && { type:'toggle', key:'showTiming', label:'Kanal açılış süresini göster', desc:'Her kanal açılışında süreyi ekranda gösterir: sunucunun ilk veriyi gönderme süresi ve cihazın görüntüyü hazırlama süresi. Yavaşlığın kaynağını bulmak için.' },
       { type:'select', key:'ffmpeg', label:'Ses çözücü (FFmpeg)', desc:() => 'Cihazın çözemediği sesleri (MP2, AC3, DTS…) çözer. Bazı kanallarda ses yoksa açık olduğundan emin olun.' + ffmpegStateText(), native:true, get:() => cfg.ffmpeg === 'off' ? 'off' : 'on', options:[['on','Açık (önerilen)'],['off','Kapalı']] },
       APP && APP.ffmpegState && APP.ffmpegState() === 'crash' && { type:'button', label:'FFmpeg\'i tekrar etkinleştir', desc:'Filmlerde ya da bazı kanallarda ses yoksa deneyin. Sorun çıkarsa uygulama yine kendini korur.', action:'Etkinleştir', run:() => { APP.ffmpegRetry(); toast('FFmpeg yeniden etkinleştirildi'); setTimeout(renderSettings, 600); } },
       { type:'select', label:'Uyku zamanlayıcı', desc:() => sleepEnd ? `Oynatma yaklaşık ${Math.max(1, Math.round((sleepEnd - Date.now())/60e3))} dakika sonra duracak.` : 'Seçilen süre sonunda oynatma durur.',
