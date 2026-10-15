@@ -17,8 +17,11 @@ import java.io.InterruptedIOException
  * sunucuları (özellikle tek bağlantı sınırı olanlar) bu ikinci isteğe boş yanıt veriyor ve oynatıcı
  * "dosya bozuk" sanıyor.
  *
+ *  - Parçalı modda dosyayı küçük, sınırlı parçalar hâlinde ister ("bytes=a-b"; 64 KB'tan başlayıp 2 MB'a kadar).
+ *    Her parça sonuna kadar okunduğu için sunucuyla aynı bağlantı tekrar kullanılır; oynatıcı dosyanın
+ *    sonuna atlarken yeni bağlantı açılmaz (tek bağlantı sınırı olan sunucular yenisini reddediyor).
+ *    Yarıda bırakılan parçanın kalanı kapatırken okunup atılır, yine bağlantı korunur.
  *  - Ortadan yapılan istek boş gelir, yanlış konumdan gelir ya da hata verirse kısa bekleyip tekrar dener.
- *  - Parçalı modda (chunked) dosyayı 16 MB'lık sınırlı parçalar hâlinde ister ("bytes=a-b").
  *
  * Dosyanın başından yapılan isteklere (canlı yayınlar dahil) dokunmaz.
  */
@@ -39,6 +42,7 @@ class SafeRangeDataSource(
     private var chunkReq = 0L       // bu parçada istenen bayt
     private var chunkGot = 0L       // bu parçada gelen bayt
     private var upstreamOpen = false
+    private var rampIdx = 0
 
     private var pre: ByteArray? = null
     private var preLen = 0
@@ -53,9 +57,10 @@ class SafeRangeDataSource(
         pos = dataSpec.position
         end = if (dataSpec.length != UNSET) dataSpec.position + dataSpec.length else UNSET
         total = -1L
+        rampIdx = 0
         val http = dataSpec.uri.scheme?.startsWith("http") == true
         useChunks = http && chunked()
-        val len = openAt(pos, if (http && pos > 0) 4 else 1)
+        val len = openAt(pos, if (http && pos > 0) 3 else 1)
         return when {
             end != UNSET -> dataSpec.length
             useChunks -> if (total > 0) total - pos else UNSET
@@ -82,12 +87,14 @@ class SafeRangeDataSource(
     private fun openAt(p: Long, attempts: Int): Long {
         val base = spec ?: throw IOException("no spec")
         var lastErr: IOException? = null
+        val chunk = RAMP[minOf(rampIdx, RAMP.size - 1)]
+        if (useChunks) rampIdx++
         for (a in 0 until attempts) {
             if (a > 0) {
-                try { Thread.sleep(700L * a) } catch (_: InterruptedException) { throw InterruptedIOException() }
+                try { Thread.sleep(1_000L * a) } catch (_: InterruptedException) { throw InterruptedIOException() }
             }
             val reqLen = when {
-                useChunks -> if (end != UNSET) minOf(CHUNK, end - p) else CHUNK
+                useChunks -> if (end != UNSET) minOf(chunk, end - p) else chunk
                 end != UNSET -> end - p
                 else -> UNSET
             }
@@ -150,7 +157,7 @@ class SafeRangeDataSource(
                 (end == UNSET || pos < end) && (total < 0 || pos < total)
             if (!more) return r
             closeUpstreamQuietly()
-            openAt(pos, 4)
+            openAt(pos, 3)
             return read(buffer, offset, length)
         }
         if (r > 0) { pos += r; chunkGot += r }
@@ -162,11 +169,27 @@ class SafeRangeDataSource(
     override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
 
     override fun close() {
+        // Parçanın kalanı azsa okuyup at: yanıt tamamlanınca bağlantı havuza döner ve sıradaki istekte yeniden kullanılır
+        if (upstreamOpen && useChunks && chunkReq > 0) {
+            val unread = chunkReq - chunkGot - (if (pre != null) (preLen - prePos).toLong() else 0L)
+            if (unread in 1..DRAIN_MAX) {
+                try {
+                    val buf = ByteArray(32 * 1024)
+                    var left = unread
+                    while (left > 0) {
+                        val r = upstream.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                        if (r < 0) break
+                        left -= r
+                    }
+                } catch (_: Exception) {}
+            }
+        }
         pre = null
         closeUpstreamQuietly()
     }
 
     private companion object {
-        const val CHUNK = 16L * 1024 * 1024
+        val RAMP = longArrayOf(64L * 1024, 256L * 1024, 1024L * 1024, 2L * 1024 * 1024)
+        const val DRAIN_MAX = 2L * 1024 * 1024
     }
 }

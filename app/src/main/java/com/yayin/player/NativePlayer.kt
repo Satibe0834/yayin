@@ -187,6 +187,25 @@ class NativePlayer(
         return built
     }
 
+    // Film/dizi 40 sn'de açılmazsa sonsuz beklemek yerine teşhisli hata penceresi göster
+    @Volatile private var vodStarted = false
+    private val vodTimeout = Runnable {
+        if (mode != Mode.VOD || vodStarted) return@Runnable
+        val url = urlAt(player.currentMediaItemIndex)
+        val ua = vodUa
+        player.stop()
+        Thread {
+            val pr0 = probe(url, ua)
+            val pr = if (pr0.kind == "mp4") pr0.copy(boxes = mp4Boxes(url, ua)) else pr0
+            main.post {
+                if (mode != Mode.VOD) return@post
+                lastProbe = pr
+                showVodError(PlaybackException("40 sn içinde açılamadı", null, PlaybackException.ERROR_CODE_TIMEOUT))
+            }
+        }.start()
+    }
+    private fun armVodTimeout() { main.removeCallbacks(vodTimeout); if (!vodStarted) main.postDelayed(vodTimeout, 40_000) }
+
     // Film/dizi: parçalı indirme modu ve bağlantı notları (hata penceresinde gösterilir)
     @Volatile private var vodChunked = false
     private val vodNotes = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
@@ -288,6 +307,7 @@ class NativePlayer(
 
     private val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
+                if (mode == Mode.VOD) { vodStarted = true; main.removeCallbacks(vodTimeout) }
                 if (timingSent || mode != Mode.LIVE || tStart == 0L) return
                 timingSent = true
                 val now = android.os.SystemClock.elapsedRealtime()
@@ -652,7 +672,7 @@ class NativePlayer(
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
         audioWarned = false
         triedAsHls = false
-        vodTried.clear(); vodUa = userAgent; lastProbe = null; vodChunked = false; vodNotes.clear()
+        vodTried.clear(); vodUa = userAgent; lastProbe = null; vodChunked = true; vodNotes.clear(); vodStarted = false
         if (vodItems.length() == 0) return
         mode = Mode.VOD
         val items = (0 until vodItems.length()).map { i ->
@@ -681,6 +701,7 @@ class NativePlayer(
         player.setMediaItems(items, index.coerceIn(0, items.size - 1), startMs)
         player.prepare()
         player.playWhenReady = true
+        armVodTimeout()
         main.removeCallbacks(progressTick)
         main.postDelayed(progressTick, 5_000)
     }
@@ -689,6 +710,7 @@ class NativePlayer(
         if (mode != Mode.VOD) return
         emitProgress()
         main.removeCallbacks(progressTick)
+        main.removeCallbacks(vodTimeout)
         mode = Mode.NONE
         player.stop()
         player.clearMediaItems()
@@ -873,8 +895,6 @@ class NativePlayer(
         // "Dosya yapısı bozuk": önce toleranslı okumayla aynı yerden yeniden dene (diğer oynatıcılar bu dosyaları açabiliyor)
         if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
             // "Yükleme hazırlık bitmeden tamamlandı": sunucu dosyanın sonunu (moov) göndermedi → parçalı indir
-            val early = generateSequence(error.cause) { it.cause }.any { it.message?.contains("Loading finished before preparation") == true }
-            if (early && "chunk" !in vodTried) { vodTried += "chunk"; vodChunked = true; restartVod(idx, pos, vodUa, false); return }
             if ("tol" !in vodTried) { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true); return }
         }
         val ua = vodUa
@@ -890,7 +910,6 @@ class NativePlayer(
                     pr.kind == "hls" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
                     blocked && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
                     pr.kind == "unknown" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
-                    pr.kind in setOf("mp4", "mkv") && "chunk" !in vodTried -> { vodTried += "chunk"; vodChunked = true; restartVod(idx, pos, vodUa, false) }
                     pr.kind in setOf("mp4", "mkv") && "tol" !in vodTried -> { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true) }
                     // Toleranslı okuma da yetmediyse: sunucu bazı oynatıcılara farklı dosya veriyor olabilir → VLC kimliğiyle dene
                     pr.kind in setOf("mp4", "mkv") && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
@@ -913,6 +932,7 @@ class NativePlayer(
         player.setMediaSources(sources, idx.coerceIn(0, sources.size - 1), pos)
         player.prepare()
         player.playWhenReady = true
+        armVodTimeout()
     }
 
     private fun showVodError(error: PlaybackException) {
