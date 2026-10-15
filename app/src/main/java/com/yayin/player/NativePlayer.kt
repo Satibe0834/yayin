@@ -127,9 +127,10 @@ class NativePlayer(
         val http0 = OkHttpDataSource.Factory(http).setUserAgent(ua)
         // Canlı MPEG-TS kanalında PAT+PMT'yi başa al: ilk tam kare atılmasın, görüntü hemen gelsin
         // Film/dizide dosyanın ortasından/sonundan okuma isteklerini güvenceye al (boş yanıtta tekrar dene, gerekirse parçalı indir)
+        // Film/dizi: kendi sade HTTP okuyucumuz (bazı sunucular ExoPlayer'ın isteklerinde konumu yok sayıyor)
         val ds = DataSource.Factory {
-            val safe = SafeRangeDataSource(http0.createDataSource(), { vodChunked && mode == Mode.VOD }) { note -> addVodNote(note) }
-            PsiFirstDataSource(safe) { uri -> psiFixEnabled && uri.toString() == psiUrl }
+            if (mode == Mode.VOD && vodChunked) VodHttpDataSource(http, ua) { note -> addVodNote(note) }
+            else PsiFirstDataSource(http0.createDataSource()) { uri -> psiFixEnabled && uri.toString() == psiUrl }
         }
         val ex = DefaultExtractorsFactory()
             .setTsExtractorFlags(
