@@ -141,7 +141,8 @@ class VlcVod(
         spinner.visibility = View.VISIBLE
         showOverlay(6_000)
         val l = lib ?: LibVLC(activity, arrayListOf(
-            "--network-caching=3000",
+            "--network-caching=8000",      // 8 sn arabellek: yavaş sunucuda takılmayı azaltır
+            "--file-caching=3000",
             "--audio-time-stretch",
             "--no-stats",
         )).also { lib = it }
