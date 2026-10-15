@@ -126,7 +126,11 @@ class NativePlayer(
     private fun sourceFactory(ua: String, tolerant: Boolean = false): DefaultMediaSourceFactory {
         val http0 = OkHttpDataSource.Factory(http).setUserAgent(ua)
         // Canlı MPEG-TS kanalında PAT+PMT'yi başa al: ilk tam kare atılmasın, görüntü hemen gelsin
-        val ds = DataSource.Factory { PsiFirstDataSource(http0.createDataSource()) { uri -> psiFixEnabled && uri.toString() == psiUrl } }
+        // Film/dizide dosyanın ortasından/sonundan okuma isteklerini güvenceye al (boş yanıtta tekrar dene, gerekirse parçalı indir)
+        val ds = DataSource.Factory {
+            val safe = SafeRangeDataSource(http0.createDataSource(), { vodChunked && mode == Mode.VOD }) { note -> addVodNote(note) }
+            PsiFirstDataSource(safe) { uri -> psiFixEnabled && uri.toString() == psiUrl }
+        }
         val ex = DefaultExtractorsFactory()
             .setTsExtractorFlags(
                 DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
@@ -182,6 +186,11 @@ class NativePlayer(
         if (handleAudioFocus) mainFfmpegIndex = renderers.ffmpegIndex
         return built
     }
+
+    // Film/dizi: parçalı indirme modu ve bağlantı notları (hata penceresinde gösterilir)
+    @Volatile private var vodChunked = false
+    private val vodNotes = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+    private fun addVodNote(n: String) { if (mode == Mode.VOD) vodNotes.add(n) }
 
     private var mainFfmpegIndex = -1
     private var audioWarned = false
@@ -643,7 +652,7 @@ class NativePlayer(
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
         audioWarned = false
         triedAsHls = false
-        vodTried.clear(); vodUa = userAgent; lastProbe = null
+        vodTried.clear(); vodUa = userAgent; lastProbe = null; vodChunked = false; vodNotes.clear()
         if (vodItems.length() == 0) return
         mode = Mode.VOD
         val items = (0 until vodItems.length()).map { i ->
@@ -862,8 +871,11 @@ class NativePlayer(
         val url = urlAt(idx)
         if (url.isBlank() || vodTried.size >= 4) { showVodError(error); return }
         // "Dosya yapısı bozuk": önce toleranslı okumayla aynı yerden yeniden dene (diğer oynatıcılar bu dosyaları açabiliyor)
-        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED && "tol" !in vodTried) {
-            vodTried += "tol"; restartVod(idx, pos, vodUa, false, true); return
+        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
+            // "Yükleme hazırlık bitmeden tamamlandı": sunucu dosyanın sonunu (moov) göndermedi → parçalı indir
+            val early = generateSequence(error.cause) { it.cause }.any { it.message?.contains("Loading finished before preparation") == true }
+            if (early && "chunk" !in vodTried) { vodTried += "chunk"; vodChunked = true; restartVod(idx, pos, vodUa, false); return }
+            if ("tol" !in vodTried) { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true); return }
         }
         val ua = vodUa
         Thread {
@@ -878,6 +890,7 @@ class NativePlayer(
                     pr.kind == "hls" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
                     blocked && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
                     pr.kind == "unknown" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
+                    pr.kind in setOf("mp4", "mkv") && "chunk" !in vodTried -> { vodTried += "chunk"; vodChunked = true; restartVod(idx, pos, vodUa, false) }
                     pr.kind in setOf("mp4", "mkv") && "tol" !in vodTried -> { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true) }
                     // Toleranslı okuma da yetmediyse: sunucu bazı oynatıcılara farklı dosya veriyor olabilir → VLC kimliğiyle dene
                     pr.kind in setOf("mp4", "mkv") && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
@@ -925,7 +938,9 @@ class NativePlayer(
             if (pr.detail.isNotBlank()) append("\n“").append(pr.detail).append("”")
             if (pr.boxes.isNotBlank()) append("\nDosya yapısı: ").append(pr.boxes)
             if (vodTried.isNotEmpty()) append("\nDenenenler: ").append(vodTried.joinToString {
-                when (it) { "ua" -> "VLC kimliği"; "tol" -> "toleranslı okuma"; else -> "HLS" } })
+                when (it) { "ua" -> "VLC kimliği"; "tol" -> "toleranslı okuma"; "chunk" -> "parçalı indirme"; else -> "HLS" } })
+            val notes = synchronized(vodNotes) { vodNotes.toList() }
+            if (notes.isNotEmpty()) append("\nBağlantı: ").append(notes.joinToString(", "))
         }
         // ExoPlayer'ın asıl hata açıklaması (hangi kutuda/neden takıldığını söyler)
         val cause = generateSequence(error.cause) { it.cause }.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
