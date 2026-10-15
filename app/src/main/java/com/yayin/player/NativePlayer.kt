@@ -744,6 +744,13 @@ class NativePlayer(
             val pos = vlc?.timeMs ?: 0L
             val idx = vlcIndex
             addVodNote("VLC: $msg")
+            val alt = altUrl(urlAt(idx), "m3u8")
+            if (!vlcAltTried && alt != null) {
+                vlcAltTried = true
+                addVodNote("VLC .m3u8 adresiyle deneniyor")
+                playVlcItem(idx, pos, alt)
+                return
+            }
             releaseVlc()
             if (!exoTried) {
                 android.widget.Toast.makeText(activity, "VLC açamadı, diğer oynatıcıyla deneniyor…", android.widget.Toast.LENGTH_SHORT).show()
@@ -764,25 +771,33 @@ class NativePlayer(
         vlcTried = true
         main.removeCallbacks(vodTimeout)
         // ExoPlayer'ı durdur (arka plandaki canlı yayın ya da açılamayan film) ve görünümünü gizle
+        val wasBusy = player.playbackState != Player.STATE_IDLE
         player.stop(); player.clearMediaItems()
+        aux.forEach { it?.let { a -> a.stop(); a.clearMediaItems() } }   // önizleme / çoklu ekran bağlantıları da kapansın
         view.hideController()
         view.visibility = View.GONE
         val v = vlc ?: try { VlcVod(activity, root, vlcCb) } catch (t: Throwable) {
             vlcBroken = true; addVodNote("VLC yüklenemedi"); startExo(index, startMs); return
         }
         vlc = v; vlcActive = true
-        playVlcItem(index.coerceIn(0, vodItems.length() - 1), startMs)
+        val i = index.coerceIn(0, vodItems.length() - 1)
+        // Sağlayıcının tek bağlantı sınırı varsa kapanan canlı yayın bağlantısının serbest kalmasını bekle
+        if (wasBusy) main.postDelayed({ if (mode == Mode.VOD && vlcActive && vlc === v) playVlcItem(i, startMs) }, 1_500)
+        else playVlcItem(i, startMs)
     }
 
-    private fun playVlcItem(i: Int, startMs: Long) {
+    private var vlcAltTried = false
+
+    private fun playVlcItem(i: Int, startMs: Long, urlOverride: String? = null) {
         val v = vlc ?: return
+        if (urlOverride == null) vlcAltTried = false
         vlcIndex = i
         val o = vodItems.optJSONObject(i) ?: return
         updateTitle(i)
         // Kullanıcı özel bir kimlik ayarladıysa onu kullan; yoksa VLC kendi kimliğiyle istesin
         val ua = if (vodUa != defaultUserAgent) vodUa else ""
         try {
-            v.play(o.optString("url"), o.optString("title"), o.optString("sub"), startMs, ua, audioLang, subLang, lastVolume, aspectMode)
+            v.play(urlOverride ?: o.optString("url"), o.optString("title"), o.optString("sub"), startMs, ua, audioLang, subLang, lastVolume, aspectMode)
         } catch (t: Throwable) {
             vlcBroken = true
             vlcCb.onVlcError("VLC başlatılamadı (" + t.javaClass.simpleName + ")")
@@ -994,9 +1009,12 @@ class NativePlayer(
         val idx = player.currentMediaItemIndex
         val pos = player.currentPosition.coerceAtLeast(0)
         val url = urlAt(idx)
-        if (url.isBlank() || vodTried.size >= 4) { showVodError(error); return }
+        if (url.isBlank() || vodTried.size >= 6) { showVodError(error); return }
         // "Dosya yapısı bozuk": önce toleranslı okumayla aynı yerden yeniden dene (diğer oynatıcılar bu dosyaları açabiliyor)
         if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
+            // Önce sunucunun HLS (.m3u8) adresi: Xtream sunucuları dosyayı kendisi yayına çevirip düzgün gönderir
+            val hlsUrl = altUrl(url, "m3u8")
+            if (hlsUrl != null && "m3u8" !in vodTried) { vodTried += "m3u8"; restartVod(idx, pos, vodUa, true, false, hlsUrl); return }
             // "Yükleme hazırlık bitmeden tamamlandı": sunucu dosyanın sonunu (moov) göndermedi → parçalı indir
             if ("tol" !in vodTried) { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true); return }
         }
@@ -1016,6 +1034,8 @@ class NativePlayer(
                     pr.kind in setOf("mp4", "mkv") && "tol" !in vodTried -> { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true) }
                     // Toleranslı okuma da yetmediyse: sunucu bazı oynatıcılara farklı dosya veriyor olabilir → VLC kimliğiyle dene
                     pr.kind in setOf("mp4", "mkv") && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
+                    altUrl(url, "m3u8") != null && "m3u8" !in vodTried -> { vodTried += "m3u8"; restartVod(idx, pos, vodUa, true, false, altUrl(url, "m3u8")) }
+                    altUrl(url, "ts") != null && "ts" !in vodTried -> { vodTried += "ts"; restartVod(idx, pos, vodUa, false, false, altUrl(url, "ts")) }
                     else -> showVodError(error)
                 }
             }
@@ -1023,11 +1043,21 @@ class NativePlayer(
     }
 
     /** Film listesini yeni ayarlarla (User-Agent / HLS) aynı bölüm ve konumdan yeniden başlat. */
-    private fun restartVod(idx: Int, pos: Long, ua: String, forceHls: Boolean, tolerant: Boolean = false) {
+    /** Aynı içeriğin sunucudaki başka biçimli adresi: .../123.mp4 → .../123.m3u8 (ya da .ts) */
+    private fun altUrl(url: String, ext: String): String? {
+        val r = Regex("\\.(mp4|mkv|avi|m4v|mov|webm|flv|wmv|mpg|mpeg|ts)(\\?|$)", RegexOption.IGNORE_CASE)
+        val m = r.find(url) ?: return null
+        if (m.groupValues[1].equals(ext, true)) return null
+        return url.replaceRange(m.range, ".$ext" + m.groupValues[2])
+    }
+
+    private fun restartVod(idx: Int, pos: Long, ua: String, forceHls: Boolean, tolerant: Boolean = false, urlOverride: String? = null) {
+        // HLS'te ExoPlayer'ın kendi okuyucusu (yönlendirmeleri ve parça adreslerini doğru çözer); dosyalarda bizim parçalı okuyucu
+        vodChunked = !forceHls
         val factory = sourceFactory(ua, tolerant || "tol" in vodTried)
         val sources = (0 until vodItems.length()).map { i ->
             val o = vodItems.getJSONObject(i)
-            var item = mediaItem(o.getString("url")).buildUpon()
+            var item = mediaItem(if (i == idx && urlOverride != null) urlOverride else o.getString("url")).buildUpon()
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(o.optString("title")).setSubtitle(o.optString("sub")).build())
             if (forceHls && i == idx) item = item.setMimeType(MimeTypes.APPLICATION_M3U8)
             factory.createMediaSource(item.build())
@@ -1067,7 +1097,7 @@ class NativePlayer(
             if (pr.detail.isNotBlank()) append("\n“").append(pr.detail).append("”")
             if (pr.boxes.isNotBlank()) append("\nDosya yapısı: ").append(pr.boxes)
             if (vodTried.isNotEmpty()) append("\nDenenenler: ").append(vodTried.joinToString {
-                when (it) { "ua" -> "VLC kimliği"; "tol" -> "toleranslı okuma"; "chunk" -> "parçalı indirme"; else -> "HLS" } })
+                when (it) { "ua" -> "VLC kimliği"; "tol" -> "toleranslı okuma"; "chunk" -> "parçalı indirme"; "m3u8" -> ".m3u8 adresi"; "ts" -> ".ts adresi"; else -> "HLS" } })
             val notes = synchronized(vodNotes) { vodNotes.toList() }
             if (notes.isNotEmpty()) append("\nBağlantı: ").append(notes.joinToString(", "))
         }

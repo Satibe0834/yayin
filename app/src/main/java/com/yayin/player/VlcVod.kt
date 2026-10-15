@@ -142,7 +142,6 @@ class VlcVod(
         showOverlay(6_000)
         val l = lib ?: LibVLC(activity, arrayListOf(
             "--network-caching=3000",
-            "--http-reconnect",
             "--audio-time-stretch",
             "--no-stats",
         )).also { lib = it }
@@ -164,7 +163,7 @@ class VlcVod(
         p.setVolume((volume * 100).toInt().coerceIn(0, 100))
         p.play()
         main.removeCallbacks(tick); main.post(tick)
-        main.removeCallbacks(startTimeout); main.postDelayed(startTimeout, 60_000)
+        main.removeCallbacks(startTimeout); main.postDelayed(startTimeout, 35_000)
     }
 
     private var subOff = false
@@ -181,7 +180,7 @@ class VlcVod(
     }
 
     private val startTimeout = Runnable {
-        if (!started && !released) cb.onVlcError("60 sn içinde başlamadı (" + stateText() + ")")
+        if (!started && !released) cb.onVlcError("35 sn içinde başlamadı (" + stateText() + ")")
     }
 
     private fun onEvent(e: MediaPlayer.Event) {
