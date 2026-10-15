@@ -608,6 +608,16 @@ html.tv .mark .globe{filter:none}
 /* Şeffaf temada fotoğraf üstündeki yazılar okunaklı kalsın */
 html.live-tp .ch, html.live-tp .cats, html.live-tp .epgp, html.live-tp .side, html.live-tp .lhead{text-shadow:0 1px 3px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.5)}
 
+/* Şeffaf temada fotoğraf üstündeki yazılar için koyu zemin (koyuluğu fotoğrafa göre otomatik) */
+html.tp-full #matches .sc-body,html.tp-glass #matches .sc-body{background:rgba(0,0,0,var(--scrim,.48));border-radius:16px;padding:4px 12px}
+html.tp-full .vcats,html.tp-full .snav,html.tp-full .spane,html.tp-full .vod-head{background:rgba(0,0,0,var(--scrim,.48));border-radius:16px}
+html.tp-full .vcats{padding:6px}
+html.tp-full .spane{padding:6px 16px}
+html.tp-full .sc-head,html.tp-full .vod-head{text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.6)}
+html.tp-full .poster .pt,html.tp-full .poster .ps{background:rgba(0,0,0,var(--scrim,.48));border-radius:8px;padding:2px 6px;text-shadow:0 1px 2px rgba(0,0,0,.9)}
+html.tp-full .mrow .mtime small,html.tp-full .mrow small{color:rgba(255,255,255,.82)}
+html.live-tp .cats,html.live-tp .side{background:rgba(0,0,0,calc(var(--scrim,.48) - .1))}
+
 /* Yayın kalitesi rozetleri */
 .qb{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font:800 11px/1.5 var(--ui);color:var(--text);background:rgba(255,255,255,.06);white-space:nowrap}
 .qb.q{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff)}
@@ -1587,6 +1597,41 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   const lum = ([r, g, b]) => (0.2126*r + 0.7152*g + 0.0722*b) / 255;
 
   const DEF_THEME = 'custom', DEF_BG = 'uzungol.jpg';   // varsayılan: Kendi resmim = Uzungöl
+  // ---- Okunabilirlik: fotoğrafın parlaklığını ölçüp yazı zeminini ve karartmayı otomatik ayarla ----
+  const DEF_BG_LUMA = { mean:.321, p90:.475 };   // uzungol.jpg için önceden ölçüldü
+  const lumaCache = new Map();
+  function measureLuma(src){
+    return new Promise(res => {
+      if (src === DEF_BG) return res(DEF_BG_LUMA);
+      if (lumaCache.has(src)) return res(lumaCache.get(src));
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = 96; c.height = 54;
+          const g = c.getContext('2d'); g.drawImage(img, 0, 0, 96, 54);
+          const d = g.getImageData(0, 0, 96, 54).data, L = [];
+          for (let i = 0; i < d.length; i += 4) L.push((.2126 * d[i] + .7152 * d[i + 1] + .0722 * d[i + 2]) / 255);
+          L.sort((a, b) => a - b);
+          const r = { mean:L.reduce((a, b) => a + b, 0) / L.length, p90:L[Math.floor(L.length * .9)] };
+          lumaCache.set(src, r); res(r);
+        } catch { res(null); }
+      };
+      img.onerror = () => res(null);
+      img.src = src;
+    });
+  }
+  function applyReadability(t){
+    const root = document.documentElement;
+    const src = t.id === 'custom' ? (store.get('customBg', '') || DEF_BG) : null;
+    const set = l => {
+      // açık bölgeler (p90) parladıkça yazı zemini koyulaşır; genel parlaklık (mean) arttıkça fotoğraf karartılır
+      root.style.setProperty('--scrim', (l ? Math.min(.68, Math.max(.4, .4 + .7 * (l.p90 - .35))) : .48).toFixed(2));
+      if (t.id === 'custom' && store.get('customDim', 'auto') === 'auto')
+        root.style.setProperty('--art-dim', (l ? Math.min(.6, Math.max(.25, .25 + .8 * (l.mean - .2))) : .4).toFixed(2));
+    };
+    if (!src){ set(null); return; }
+    measureLuma(src).then(l => { if (themeById(store.get('theme', DEF_THEME)).id === t.id) set(l); });
+  }
   const artCache = new Map();
   function artUrl(t){
     if (t.id === 'custom') return `url("${store.get('customBg', '') || DEF_BG}")`;
@@ -1620,7 +1665,8 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     root.classList.toggle('plain-art', !t.art && t.id !== 'custom' && !t.live);
     root.classList.toggle('live-bg', !!t.live);
     if (art) root.style.setProperty('--home-art', art); else root.style.removeProperty('--home-art');
-    root.style.setProperty('--art-dim', t.id === 'custom' ? store.get('customDim', .4) : .12);
+    { const cd = store.get('customDim', 'auto'); root.style.setProperty('--art-dim', t.id === 'custom' ? (cd === 'auto' ? .35 : cd) : .12); }
+    applyReadability(t);
     delete root.dataset.theme;
     const prev = store.get('theme', 'red');
     store.set('theme', t.id);
@@ -1794,7 +1840,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       html = `<div class="tgrid"><button class="tcard" data-up="1"><div class="tprev tupload"><div><b>＋</b>${own ? 'Başka resim seç' : 'Resim seç'}</div></div><div class="tname">Cihazdan fotoğraf</div></button>${has ? themeCard(themeById('custom')) : ''}</div>`;
       if (own) html += `<div class="cust-tools"><h3>Hazır fotoğraf</h3><div class="dots"><button class="dot auto" data-resetbg="1">Uzungöl'e dön</button></div></div>`;
       if (has) html += `<div class="cust-tools"><h3>Vurgu rengi</h3><div class="dots"><button class="dot auto" data-auto="1">Resimden al</button>${CUSTOM_ACC.map(c => `<button class="dot" data-acc="${c}" style="background:${c}" aria-label="${c}" aria-pressed="${store.get('customAccent','') === c}"></button>`).join('')}</div>
-        <h3>Arka plan karartma</h3><div class="dots">${[[.1,'Açık'],[.3,'Orta'],[.5,'Koyu']].map(([v, l]) => `<button class="dot auto" data-dim="${v}" aria-pressed="${+store.get('customDim', .4) === v}">${l}</button>`).join('')}</div></div>`;
+        <h3>Arka plan karartma</h3><div class="dots">${[['auto','Otomatik'],[.1,'Açık'],[.3,'Orta'],[.5,'Koyu']].map(([v, l]) => `<button class="dot auto" data-dim="${v}" aria-pressed="${String(store.get('customDim', 'auto')) === String(v)}">${l}</button>`).join('')}</div></div>`;
       html += `<p class="lead" style="color:var(--muted);margin:14px 4px;max-width:62ch">Seçtiğiniz fotoğraf yalnızca bu cihazda saklanır. En iyi sonuç için yatay (16:9) bir fotoğraf seçin.</p>`;
     } else {
       html = `<div class="tgrid">${TH.filter(x => x.cat === thCat).map(themeCard).join('')}</div>`;
@@ -1817,7 +1863,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const c = e.target.closest('.tcard[data-t]');
     if (c){ applyTheme(c.dataset.t); renderThemes(); $('thBody').querySelector(`[data-t="${c.dataset.t}"]`)?.focus(); toast('Tema uygulandı: ' + themeById(c.dataset.t).name); return; }
     const a = e.target.closest('[data-acc]'); if (a){ store.set('customAccent', a.dataset.acc); applyTheme('custom'); renderThemes(); $('thBody').querySelector(`[data-acc="${a.dataset.acc}"]`)?.focus(); return; }
-    const d = e.target.closest('[data-dim]'); if (d){ store.set('customDim', +d.dataset.dim); applyTheme('custom'); renderThemes(); $('thBody').querySelector(`[data-dim="${d.dataset.dim}"]`)?.focus(); return; }
+    const d = e.target.closest('[data-dim]'); if (d){ store.set('customDim', d.dataset.dim === 'auto' ? 'auto' : +d.dataset.dim); applyTheme('custom'); renderThemes(); $('thBody').querySelector(`[data-dim="${d.dataset.dim}"]`)?.focus(); return; }
     if (e.target.closest('[data-resetbg]')){ try { localStorage.removeItem('yayin:customBg'); } catch {} artCache.clear && artCache.clear(); applyTheme('custom'); renderThemes(); toast('Uzungöl fotoğrafı geri geldi'); return; }
     if (e.target.closest('[data-auto]')){ const src = store.get('customBg',''); if (src) pickAccent(src).then(c => { store.set('customAccent', c); applyTheme('custom'); renderThemes(); toast('Renk resimden alındı'); }); }
   };
