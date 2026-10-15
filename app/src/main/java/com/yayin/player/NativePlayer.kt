@@ -288,7 +288,8 @@ class NativePlayer(
                 when (state) {
                     Player.STATE_BUFFERING -> emit("buffering")
                     Player.STATE_READY -> { liveRetries = 0; if (player.playWhenReady) emit("playing") }
-                    Player.STATE_ENDED -> if (mode == Mode.VOD) closeVod() else emit("ended")
+                    // Canlı yayında "bitti" = sağlayıcı bağlantıyı kapattı (çoğu 5-15 dk'da bir yapar): aynı kanala sessizce yeniden bağlan
+                    Player.STATE_ENDED -> if (mode == Mode.VOD) closeVod() else if (mode == Mode.LIVE) reconnectLive() else emit("ended")
                     else -> {}
                 }
             }
@@ -298,6 +299,7 @@ class NativePlayer(
             override fun onTracksChanged(tracks: Tracks) { emitInfo(); checkAudio(tracks) }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying && mode == Mode.LIVE) { hadPlayed = true; lastPos = -1L; bufSince = 0L }
                 emit(if (isPlaying) "playing" else "paused")
                 if (mode == Mode.VOD && !isPlaying) emitProgress()
             }
@@ -421,6 +423,7 @@ class NativePlayer(
         // Aynı kanal zaten oynuyorsa (ör. ana menü arka planından Canlı TV'ye geçiş) yeniden yükleme
         if (mode == Mode.LIVE && player.playbackState != Player.STATE_IDLE &&
             player.currentMediaItem?.localConfiguration?.uri?.toString() == url) {
+            startLiveWatch()
             view.visibility = View.VISIBLE
             player.playWhenReady = true
             if (player.playbackState == Player.STATE_READY) emit("playing")
@@ -428,6 +431,7 @@ class NativePlayer(
         }
         mode = Mode.LIVE
         liveRetries = 0
+        hadPlayed = false; reconnects.clear(); startLiveWatch()
         view.visibility = View.VISIBLE
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
@@ -525,6 +529,66 @@ class NativePlayer(
             leftMargin = (x * d).toInt()
             topMargin = (y * d).toInt()
         }
+    }
+
+    // ---------------- Canlı yayın bekçisi ----------------
+    // Sağlayıcılar canlı yayın bağlantısını bir süre sonra (çoğu 5-15 dk) sessizce kapatabiliyor ya da
+    // akış durabiliyor. Görüntü 8 sn ilerlemezse ya da yayın ortasında 6 sn yükleniyorsa aynı kanalı
+    // arka planda yeniden açar; izleyen kişi en fazla bir iki saniyelik duraksama görür.
+
+    private var hadPlayed = false
+    private var lastPos = -1L
+    private var stuckSince = 0L
+    private var bufSince = 0L
+    private val reconnects = ArrayDeque<Long>()
+
+    private fun startLiveWatch() {
+        main.removeCallbacks(liveWatch)
+        lastPos = -1L; bufSince = 0L
+        main.postDelayed(liveWatch, 2_000)
+    }
+
+    private val liveWatch = object : Runnable {
+        override fun run() {
+            if (mode != Mode.LIVE) return
+            val now = android.os.SystemClock.elapsedRealtime()
+            val wants = player.playWhenReady && hadPlayed &&
+                player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+            if (!wants) { lastPos = -1L; bufSince = 0L }
+            else when (player.playbackState) {
+                Player.STATE_READY -> {
+                    bufSince = 0L
+                    val p = player.currentPosition
+                    if (p != lastPos) { lastPos = p; stuckSince = now }
+                    else if (now - stuckSince > 8_000) reconnectLive()
+                }
+                Player.STATE_BUFFERING -> {
+                    lastPos = -1L
+                    if (bufSince == 0L) bufSince = now
+                    else if (now - bufSince > 6_000) reconnectLive()
+                }
+                else -> { lastPos = -1L; bufSince = 0L }
+            }
+            main.postDelayed(this, 2_000)
+        }
+    }
+
+    /** Aynı kanalı baştan bağlar. 2 dakikada 4'ten fazla gerekirse arayüzün kurtarma adımlarına bırakır. */
+    private fun reconnectLive() {
+        val item = player.currentMediaItem ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        while (reconnects.isNotEmpty() && now - reconnects.first() > 120_000) reconnects.removeFirst()
+        lastPos = -1L; bufSince = 0L; stuckSince = now
+        if (reconnects.size >= 4) {
+            hadPlayed = false
+            emit("error", JSONObject().put("code", "LIVE_RECONNECT"))
+            return
+        }
+        reconnects.addLast(now)
+        emit("buffering")   // arayüzün 10 sn'lik takılma sayacı yeniden başlasın
+        player.setMediaItem(item)
+        player.prepare()
+        player.playWhenReady = true
     }
 
     fun stop() {
@@ -695,7 +759,7 @@ class NativePlayer(
 
     // ---------------- Film / dizi açılmazsa: teşhis ve otomatik çözüm ----------------
 
-    private data class Probe(val code: Int, val type: String, val kind: String, val detail: String)
+    private data class Probe(val code: Int, val type: String, val kind: String, val detail: String, val boxes: String = "")
 
     private val vodTried = mutableSetOf<String>()
     private var vodUa = defaultUserAgent
@@ -739,6 +803,59 @@ class NativePlayer(
         }
     }
 
+    private fun mb(b: Long): String = when {
+        b < 0 -> "?"
+        b < 1024 -> "$b B"
+        b < 1024L * 1024 -> "${b / 1024} KB"
+        b < 1024L * 1024 * 1024 -> String.format(java.util.Locale.GERMANY, "%.1f MB", b / 1048576.0)
+        else -> String.format(java.util.Locale.GERMANY, "%.2f GB", b / 1073741824.0)
+    }
+
+    /**
+     * MP4 dosyasının ana kutularını (ftyp, moov, mdat...) küçük parça istekleriyle dolaşır.
+     * Sonuç örn. "ftyp 32 B, moov 2,1 MB, mdat 1,20 GB". Sunucu istenen konumu yanlış gönderirse
+     * ya da dosya eksikse bunu da yazar. Yalnızca hata penceresinde teşhis için kullanılır.
+     */
+    private fun mp4Boxes(url: String, ua: String): String {
+        val out = mutableListOf<String>()
+        var pos = 0L; var total = -1L; var sawMoov = false; var complete = false
+        try {
+            for (i in 0 until 14) {
+                if (total in 0..pos) { complete = true; break }
+                val req = Request.Builder().url(url).header("User-Agent", ua).header("Range", "bytes=$pos-${pos + 15}").build()
+                var code = 0; var cr = ""; var hdr = ByteArray(0)
+                http.newCall(req).execute().use { r ->
+                    code = r.code; cr = r.header("Content-Range") ?: ""
+                    val b = ByteArray(16); var n = 0
+                    r.body?.byteStream()?.use { inp -> while (n < 16) { val k = inp.read(b, n, 16 - n); if (k < 0) break; n += k } }
+                    hdr = b.copyOf(n)
+                }
+                val m = Regex("bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)").find(cr)
+                if (m != null) {
+                    m.groupValues[3].toLongOrNull()?.let { total = it }
+                    if (m.groupValues[1].toLongOrNull() != pos) { out += "⚠ sunucu ${mb(pos)} konumunu yanlış gönderdi"; break }
+                } else if (pos > 0) { out += "⚠ sunucu ${mb(pos)} konumundan okumaya izin vermedi (HTTP $code)"; break }
+                if (hdr.size < 8) { out += "⚠ dosya ${mb(pos)} konumunda bitiyor"; break }
+                fun u32(o: Int) = ((hdr[o].toLong() and 0xFF) shl 24) or ((hdr[o + 1].toLong() and 0xFF) shl 16) or
+                    ((hdr[o + 2].toLong() and 0xFF) shl 8) or (hdr[o + 3].toLong() and 0xFF)
+                var size = u32(0)
+                val type = String(hdr, 4, 4, Charsets.ISO_8859_1)
+                if (!type.all { it.code in 32..126 }) { out += "⚠ ${mb(pos)} konumunda bozuk veri"; break }
+                if (size == 1L && hdr.size >= 16) size = (u32(8) shl 32) or u32(12)
+                else if (size == 0L) size = if (total > 0) total - pos else -1L
+                if (type == "moov") sawMoov = true
+                out += "$type ${mb(size)}"
+                if (size < 8) { out += "⚠ geçersiz kutu boyutu"; break }
+                pos += size
+            }
+        } catch (e: Exception) {
+            out += "⚠ okunamadı: " + (e.message ?: e.javaClass.simpleName).take(60)
+        }
+        if (total > 0 && pos > total) out += "⚠ dosya eksik: ${mb(total)} var, ${mb(pos)} olmalı"
+        if (complete && !sawMoov) out += "⚠ moov (içindekiler) bölümü yok"
+        return (if (total > 0) "toplam ${mb(total)} — " else "") + out.joinToString(", ")
+    }
+
     private fun recoverVod(error: PlaybackException) {
         val idx = player.currentMediaItemIndex
         val pos = player.currentPosition.coerceAtLeast(0)
@@ -750,7 +867,9 @@ class NativePlayer(
         }
         val ua = vodUa
         Thread {
-            val pr = probe(url, ua)
+            val pr0 = probe(url, ua)
+            // MP4 ise dosyanın iç yapısına da bak (moov var mı, sunucu istenen yeri doğru gönderiyor mu)
+            val pr = if (pr0.kind == "mp4") pr0.copy(boxes = mp4Boxes(url, ua)) else pr0
             main.post {
                 if (mode != Mode.VOD) return@post
                 lastProbe = pr
@@ -760,6 +879,8 @@ class NativePlayer(
                     blocked && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
                     pr.kind == "unknown" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
                     pr.kind in setOf("mp4", "mkv") && "tol" !in vodTried -> { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true) }
+                    // Toleranslı okuma da yetmediyse: sunucu bazı oynatıcılara farklı dosya veriyor olabilir → VLC kimliğiyle dene
+                    pr.kind in setOf("mp4", "mkv") && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
                     else -> showVodError(error)
                 }
             }
@@ -802,11 +923,16 @@ class NativePlayer(
             if (pr.type.isNotBlank()) append(" · ").append(pr.type)
             if (what != null) append("\n").append(what)
             if (pr.detail.isNotBlank()) append("\n“").append(pr.detail).append("”")
-            if (vodTried.isNotEmpty()) append("\nDenenenler: ").append(vodTried.joinToString { if (it == "ua") "VLC kimliği" else "HLS" })
+            if (pr.boxes.isNotBlank()) append("\nDosya yapısı: ").append(pr.boxes)
+            if (vodTried.isNotEmpty()) append("\nDenenenler: ").append(vodTried.joinToString {
+                when (it) { "ua" -> "VLC kimliği"; "tol" -> "toleranslı okuma"; else -> "HLS" } })
         }
+        // ExoPlayer'ın asıl hata açıklaması (hangi kutuda/neden takıldığını söyler)
+        val cause = generateSequence(error.cause) { it.cause }.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
+        val more = if (cause != null) "\nAyrıntı: " + cause.take(160) else ""
         AlertDialog.Builder(activity)
             .setTitle("Bu içerik oynatılamıyor")
-            .setMessage("Dosya kaldırılmış olabilir ya da biçimi bu cihazda desteklenmiyor.\n(${error.errorCodeName})$diag")
+            .setMessage("Dosya kaldırılmış olabilir ya da biçimi bu cihazda desteklenmiyor.\n(${error.errorCodeName})$diag$more")
             .setPositiveButton("Harici oynatıcıda aç") { _, _ -> closeVod(); activity.openExternal(url, "") }
             .setNegativeButton("Kapat") { _, _ -> closeVod() }
             .setOnCancelListener { closeVod() }
