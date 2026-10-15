@@ -137,7 +137,7 @@ class VlcVod(
     fun play(url: String, title: String, sub: String, startMs: Long, ua: String, audio: String, subLang: String, volume: Float, aspect: String) {
         titleText.text = title; subText.text = sub
         subText.visibility = if (sub.isBlank()) View.GONE else View.VISIBLE
-        started = false; lengthMs = 0L
+        started = false; lengthMs = 0L; lastBuf = -1f; lastState = "başlamadı"; sawVout = false
         spinner.visibility = View.VISIBLE
         showOverlay(6_000)
         val l = lib ?: LibVLC(activity, arrayListOf(
@@ -164,19 +164,31 @@ class VlcVod(
         p.setVolume((volume * 100).toInt().coerceIn(0, 100))
         p.play()
         main.removeCallbacks(tick); main.post(tick)
-        main.removeCallbacks(startTimeout); main.postDelayed(startTimeout, 40_000)
+        main.removeCallbacks(startTimeout); main.postDelayed(startTimeout, 60_000)
     }
 
     private var subOff = false
+    private var lastBuf = -1f
+    private var lastState = "başlamadı"
+    private var sawVout = false
+
+    /** Açılamazsa teşhis: VLC nerede kaldı */
+    private fun stateText(): String {
+        val p = mp
+        val len = p?.length ?: -1L
+        return "durum: $lastState, yükleme %" + (if (lastBuf >= 0) lastBuf.toInt() else -1) +
+            ", süre " + (if (len > 0) fmt(len) else "bilinmiyor") + ", görüntü " + (if (sawVout) "var" else "yok")
+    }
 
     private val startTimeout = Runnable {
-        if (!started && !released) cb.onVlcError("40 sn içinde görüntü gelmedi")
+        if (!started && !released) cb.onVlcError("60 sn içinde başlamadı (" + stateText() + ")")
     }
 
     private fun onEvent(e: MediaPlayer.Event) {
         if (released) return
         when (e.type) {
             MediaPlayer.Event.Vout, MediaPlayer.Event.Playing -> {
+                if (e.type == MediaPlayer.Event.Vout) sawVout = true else lastState = "oynatılıyor"
                 spinner.visibility = View.GONE
                 if (!started && (e.type == MediaPlayer.Event.Vout || (mp?.time ?: 0L) > 0)) {
                     started = true
@@ -186,11 +198,20 @@ class VlcVod(
                 }
                 paintTime()
             }
-            MediaPlayer.Event.Buffering -> spinner.visibility = if (e.buffering < 100f) View.VISIBLE else View.GONE
+            MediaPlayer.Event.Buffering -> { lastBuf = e.buffering; spinner.visibility = if (e.buffering < 100f) View.VISIBLE else View.GONE }
+            MediaPlayer.Event.TimeChanged -> {
+                if (!started && e.timeChanged > 0) {
+                    started = true; spinner.visibility = View.GONE
+                    main.removeCallbacks(startTimeout)
+                    if (subOff) try { mp?.setSpuTrack(-1) } catch (_: Exception) {}
+                    cb.onVlcStarted()
+                }
+            }
+            MediaPlayer.Event.Opening -> lastState = "açılıyor"
             MediaPlayer.Event.Paused -> { paintTime(); showOverlay(60_000) }
             MediaPlayer.Event.LengthChanged -> { if (e.lengthChanged > 0) lengthMs = e.lengthChanged }
             MediaPlayer.Event.EndReached -> cb.onVlcEnded()
-            MediaPlayer.Event.EncounteredError -> cb.onVlcError("VLC bu dosyayı açamadı")
+            MediaPlayer.Event.EncounteredError -> cb.onVlcError("VLC bu dosyayı açamadı (" + stateText() + ")")
             else -> {}
         }
     }
