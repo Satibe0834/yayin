@@ -736,6 +736,17 @@ class NativePlayer(
     private val vlcCb = object : VlcVod.Callbacks {
         override fun onVlcStarted() { vodStarted = true }
         override fun onVlcEnded() {
+            val v = vlc ?: return
+            // Görüntü hiç başlamadan "bitti": VLC dosyayı açamadı demektir → hata say, yedek yolları dene
+            if (!v.hasStarted) { onVlcError("dosya açılamadı (hemen bitti)"); return }
+            // Film ortasında "bitti": bağlantı koptu → kaldığı yerden devam et (en fazla 3 kez)
+            val t = v.timeMs; val len = v.lengthMs
+            if (len > 0 && t < len - 120_000 && vlcResumes < 3) {
+                vlcResumes++
+                addVodNote("bağlantı koptu, devam ediliyor")
+                playVlcItem(vlcIndex, t, vlcCurOverride)
+                return
+            }
             emitProgress()
             if (vlcIndex + 1 < vodItems.length()) playVlcItem(vlcIndex + 1, 0L) else closeVod()
         }
@@ -769,6 +780,7 @@ class NativePlayer(
 
     private fun startVlc(index: Int, startMs: Long) {
         vlcTried = true
+        vlcAltTried = false; vlcResumes = 0; vlcCurOverride = null
         main.removeCallbacks(vodTimeout)
         // ExoPlayer'ı durdur (arka plandaki canlı yayın ya da açılamayan film) ve görünümünü gizle
         val wasBusy = player.playbackState != Player.STATE_IDLE
@@ -788,9 +800,14 @@ class NativePlayer(
 
     private var vlcAltTried = false
 
+    private var vlcResumes = 0
+    private var vlcCurOverride: String? = null
+
     private fun playVlcItem(i: Int, startMs: Long, urlOverride: String? = null) {
         val v = vlc ?: return
-        if (urlOverride == null) vlcAltTried = false
+        if (i != vlcIndex || startMs == 0L) vlcResumes = 0
+        if (urlOverride == null && (i != vlcIndex || startMs == 0L)) vlcAltTried = false
+        vlcCurOverride = urlOverride
         vlcIndex = i
         val o = vodItems.optJSONObject(i) ?: return
         updateTitle(i)

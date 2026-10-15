@@ -215,6 +215,7 @@ class VlcVod(
         }
     }
 
+    val hasStarted get() = started
     val isPlaying get() = mp?.isPlaying == true
     val timeMs get() = mp?.time ?: 0L
 
