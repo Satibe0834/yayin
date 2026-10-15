@@ -300,7 +300,7 @@ class NativePlayer(
     private val progressTick = object : Runnable {
         override fun run() {
             if (mode == Mode.VOD) {
-                if (player.isPlaying) emitProgress()
+                if (if (vlcActive) vlc?.isPlaying == true else player.isPlaying) emitProgress()
                 main.postDelayed(this, 5_000)
             }
         }
@@ -390,6 +390,8 @@ class NativePlayer(
     // ---------------- Ayarlar ----------------
 
     fun setAspect(mode: String) {
+        aspectMode = mode
+        vlc?.setAspect(mode)
         view.resizeMode = when (mode) {
             "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -403,6 +405,7 @@ class NativePlayer(
         val newFfmpeg = o.optString("ffmpeg", "on")
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
+        vodEngine = o.optString("vodEngine", "vlc")
         quality = o.optString("quality", "max")
         tsEnabled = false   // Canlı geri sarma kaldırıldı (kanal açılışını yavaşlatıyordu)
         psiFixEnabled = o.optBoolean("psiFix", true)
@@ -630,10 +633,10 @@ class NativePlayer(
         view.visibility = View.GONE
     }
 
-    fun toggle() { player.playWhenReady = !player.playWhenReady }
-    fun setMuted(m: Boolean) { player.volume = if (m) 0f else lastVolume }
+    fun toggle() { if (vlcActive) { vlc?.toggle(); return }; player.playWhenReady = !player.playWhenReady }
+    fun setMuted(m: Boolean) { player.volume = if (m) 0f else lastVolume; if (vlcActive) vlc?.setVolume(if (m) 0f else lastVolume) }
     private var lastVolume = 1f
-    fun setVolume(v: Float) { lastVolume = v.coerceIn(0f, 1f); player.volume = lastVolume }
+    fun setVolume(v: Float) { lastVolume = v.coerceIn(0f, 1f); player.volume = lastVolume; if (vlcActive) vlc?.setVolume(lastVolume) }
 
     private val warmed = HashMap<String, Long>()
 
@@ -676,6 +679,19 @@ class NativePlayer(
         vodTried.clear(); vodUa = userAgent; lastProbe = null; vodChunked = true; vodNotes.clear(); vodStarted = false
         if (vodItems.length() == 0) return
         mode = Mode.VOD
+        web.visibility = View.INVISIBLE
+        vlcTried = false; exoTried = false
+        main.removeCallbacks(progressTick)
+        main.postDelayed(progressTick, 5_000)
+        // Varsayılan: VLC (standart dışı dosyaları da açar). Açamazsa ExoPlayer'a geçilir.
+        if (vodEngine == "vlc" && !vlcBroken) { startVlc(index, startMs); return }
+        startExo(index, startMs)
+    }
+
+    /** Film/diziyi ExoPlayer ile oynat (eski yöntem; VLC açamazsa yedek). */
+    private fun startExo(index: Int, startMs: Long) {
+        exoTried = true
+        vodStarted = false
         val items = (0 until vodItems.length()).map { i ->
             val o = vodItems.getJSONObject(i)
             mediaItem(o.getString("url")).buildUpon()
@@ -703,15 +719,93 @@ class NativePlayer(
         player.prepare()
         player.playWhenReady = true
         armVodTimeout()
-        main.removeCallbacks(progressTick)
-        main.postDelayed(progressTick, 5_000)
     }
+
+    // ---------------- Film / dizi: VLC motoru ----------------
+
+    private var vodEngine = "vlc"
+    private var vlc: VlcVod? = null
+    var vlcActive = false
+        private set
+    private var vlcIndex = 0
+    private var vlcTried = false
+    private var exoTried = false
+    private var vlcBroken = false
+    private var aspectMode = "fit"
+
+    private val vlcCb = object : VlcVod.Callbacks {
+        override fun onVlcStarted() { vodStarted = true }
+        override fun onVlcEnded() {
+            emitProgress()
+            if (vlcIndex + 1 < vodItems.length()) playVlcItem(vlcIndex + 1, 0L) else closeVod()
+        }
+        override fun onVlcError(msg: String) {
+            if (!vlcActive) return
+            val pos = vlc?.timeMs ?: 0L
+            val idx = vlcIndex
+            addVodNote("VLC: $msg")
+            releaseVlc()
+            if (!exoTried) {
+                android.widget.Toast.makeText(activity, "VLC açamadı, diğer oynatıcıyla deneniyor…", android.widget.Toast.LENGTH_SHORT).show()
+                startExo(idx, pos)
+            } else {
+                showVodError(PlaybackException(msg, null, PlaybackException.ERROR_CODE_UNSPECIFIED), idx)
+            }
+        }
+        override fun onVlcNext(delta: Int) {
+            val ni = vlcIndex + delta
+            if (ni !in 0 until vodItems.length()) return
+            emitProgress()
+            playVlcItem(ni, 0L)
+        }
+    }
+
+    private fun startVlc(index: Int, startMs: Long) {
+        vlcTried = true
+        main.removeCallbacks(vodTimeout)
+        // ExoPlayer'ı durdur (arka plandaki canlı yayın ya da açılamayan film) ve görünümünü gizle
+        player.stop(); player.clearMediaItems()
+        view.hideController()
+        view.visibility = View.GONE
+        val v = vlc ?: try { VlcVod(activity, root, vlcCb) } catch (t: Throwable) {
+            vlcBroken = true; addVodNote("VLC yüklenemedi"); startExo(index, startMs); return
+        }
+        vlc = v; vlcActive = true
+        playVlcItem(index.coerceIn(0, vodItems.length() - 1), startMs)
+    }
+
+    private fun playVlcItem(i: Int, startMs: Long) {
+        val v = vlc ?: return
+        vlcIndex = i
+        val o = vodItems.optJSONObject(i) ?: return
+        updateTitle(i)
+        // Kullanıcı özel bir kimlik ayarladıysa onu kullan; yoksa VLC kendi kimliğiyle istesin
+        val ua = if (vodUa != defaultUserAgent) vodUa else ""
+        try {
+            v.play(o.optString("url"), o.optString("title"), o.optString("sub"), startMs, ua, audioLang, subLang, lastVolume, aspectMode)
+        } catch (t: Throwable) {
+            vlcBroken = true
+            vlcCb.onVlcError("VLC başlatılamadı (" + t.javaClass.simpleName + ")")
+            return
+        }
+        emit("item", JSONObject().put("index", i).put("url", urlAt(i)))
+    }
+
+    private fun releaseVlc() {
+        vlcActive = false
+        vlc?.release()
+        vlc = null
+    }
+
+    /** MainActivity'den: VLC açıkken kumanda tuşları */
+    fun vlcKey(e: android.view.KeyEvent): Boolean = vlc?.onKey(e) ?: false
 
     fun closeVod(notify: Boolean = true) {
         if (mode != Mode.VOD) return
         emitProgress()
         main.removeCallbacks(progressTick)
         main.removeCallbacks(vodTimeout)
+        releaseVlc()
         mode = Mode.NONE
         player.stop()
         player.clearMediaItems()
@@ -731,6 +825,7 @@ class NativePlayer(
     }
 
     fun seekBy(ms: Long) {
+        if (vlcActive) { vlc?.seekBy(ms); return }
         val dur = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
         player.seekTo((player.currentPosition + ms).coerceIn(0, dur))
         view.showController()
@@ -740,7 +835,7 @@ class NativePlayer(
     fun vodCmd(cmd: String) {
         if (mode != Mode.VOD) return
         when (cmd) {
-            "playpause" -> { toggle(); view.showController() }
+            "playpause" -> { toggle(); if (vlcActive) vlc?.showOverlay() else view.showController() }
             "ff" -> seekBy(30_000); "rw" -> seekBy(-30_000)
             "ff10" -> seekBy(10_000); "rw10" -> seekBy(-10_000)
             "next" -> next(); "prev" -> previous()
@@ -748,8 +843,8 @@ class NativePlayer(
         }
     }
 
-    fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
-    fun previous() { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() }
+    fun next() { if (vlcActive) { vlcCb.onVlcNext(1); return }; if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
+    fun previous() { if (vlcActive) { vlcCb.onVlcNext(-1); return }; if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() }
 
     private fun updateTitle(i: Int) {
         val o = vodItems.optJSONObject(i) ?: return
@@ -781,6 +876,13 @@ class NativePlayer(
     }
 
     private fun emitProgress() {
+        val v = vlc
+        if (vlcActive && v != null) {
+            val d = v.lengthMs
+            if (d <= 0) return
+            emit("progress", JSONObject().put("url", urlAt(vlcIndex)).put("pos", v.timeMs).put("dur", d))
+            return
+        }
         val dur = player.duration
         if (dur == C.TIME_UNSET || dur <= 0) return
         emit("progress", JSONObject()
@@ -936,11 +1038,17 @@ class NativePlayer(
         armVodTimeout()
     }
 
-    private fun showVodError(error: PlaybackException) {
-        val url = urlAt(player.currentMediaItemIndex)
+    private fun showVodError(error: PlaybackException, index: Int = player.currentMediaItemIndex) {
+        if (mode != Mode.VOD) return
+        if (!vlcTried && !vlcBroken) {
+            android.widget.Toast.makeText(activity, "Açılamadı, VLC ile deneniyor…", android.widget.Toast.LENGTH_SHORT).show()
+            startVlc(index, player.currentPosition.coerceAtLeast(0))
+            return
+        }
+        val url = urlAt(index)
         val pr = lastProbe
         try {
-            val o = vodItems.optJSONObject(player.currentMediaItemIndex)
+            val o = vodItems.optJSONObject(index)
             emit("vodErr", JSONObject().put("code", error.errorCodeName).put("title", o?.optString("title") ?: "")
                 .put("sub", o?.optString("sub") ?: "").put("probe", pr?.kind ?: "").put("http", pr?.code ?: 0))
         } catch (_: Exception) {}
@@ -1031,6 +1139,12 @@ class NativePlayer(
 
     fun onPause() {
         aux.forEach { it?.playWhenReady = false }
+        if (vlcActive) {
+            wasPlayingOnPause = vlc?.isPlaying == true
+            emitProgress()
+            vlc?.pause()
+            return
+        }
         wasPlayingOnPause = player.playWhenReady
         // Uygulama arka plana geçince canlı yayını indirmeyi bırak (bant genişliği / bağlantı)
         if (ts != null && mode == Mode.LIVE) { tsResumeUrl = tsUrl; stopTimeshift() }
@@ -1039,6 +1153,7 @@ class NativePlayer(
     }
 
     fun onResume() {
+        if (vlcActive) { if (wasPlayingOnPause) vlc?.resume(); return }
         val ru = tsResumeUrl
         if (ru != null) {
             tsResumeUrl = null
@@ -1052,6 +1167,7 @@ class NativePlayer(
     }
 
     fun release() {
+        releaseVlc()
         stopTimeshift()
         main.removeCallbacksAndMessages(null)
         aux.forEach { it?.release() }

@@ -20,6 +20,8 @@ android {
         versionCode = runNumber
         versionName = "1.$runNumber"
         buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
+        // Yalnızca ARM cihazlar (Fire TV, Android TV kutuları): VLC ile APK boyutu yarıya iner
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
     // Sabit imza: her sürüm aynı anahtarla imzalanır, böylece eskisinin üzerine kurulabilir
@@ -48,6 +50,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { buildConfig = true }
+    // VLC ve FFmpeg aynı C++ kütüphanesini içeriyor: birini al
+    packaging { jniLibs { pickFirsts += listOf("**/libc++_shared.so") } }
 }
 
 val media3 = "1.3.1"
@@ -67,6 +71,9 @@ dependencies {
     // FFmpeg ses çözücü (yalnızca ses; cihazın çözemediği MP2/AC3/DTS vb. için).
     // Bkz. YayinRenderers.kt – deneysel video çözücüsü bilerek kullanılmaz.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
+
+    // Film/dizi için VLC motoru: standart dışı yazılmış dosyaları da açar (varsayılan film/dizi oynatıcısı)
+    implementation("org.videolan.android:libvlc-all:3.5.1")
 
     // Telefonla kurulum: yerel web sunucusu + QR kod
     implementation("org.nanohttpd:nanohttpd:2.3.1")

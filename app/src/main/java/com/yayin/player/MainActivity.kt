@@ -290,6 +290,11 @@ class MainActivity : ComponentActivity() {
 
     // Kumandadaki özel tuşlar (kanal +/-, oynat/duraklat, ileri/geri sar, menü)
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Film/dizi VLC ile oynuyorsa tuşlar VLC ekranına (Geri tuşu hariç: o filmi kapatır)
+        if (native.mode == NativePlayer.Mode.VOD && native.vlcActive) {
+            if (native.vlcKey(event)) return true
+            return super.dispatchKeyEvent(event)
+        }
         if (native.mode == NativePlayer.Mode.VOD && event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
