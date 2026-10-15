@@ -35,6 +35,9 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.extractor.mp4.Mp4Extractor
+import androidx.media3.extractor.mp4.FragmentedMp4Extractor
+import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -120,7 +123,7 @@ class NativePlayer(
         private set
 
     /** Verilen User-Agent ile istek yapan kaynak fabrikası (film sunucusu belirli oynatıcı isteyebilir). */
-    private fun sourceFactory(ua: String): DefaultMediaSourceFactory {
+    private fun sourceFactory(ua: String, tolerant: Boolean = false): DefaultMediaSourceFactory {
         val http0 = OkHttpDataSource.Factory(http).setUserAgent(ua)
         // Canlı MPEG-TS kanalında PAT+PMT'yi başa al: ilk tam kare atılmasın, görüntü hemen gelsin
         val ds = DataSource.Factory { PsiFirstDataSource(http0.createDataSource()) { uri -> psiFixEnabled && uri.toString() == psiUrl } }
@@ -130,6 +133,13 @@ class NativePlayer(
                     DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
             )
             .setConstantBitrateSeekingEnabled(true)
+        if (tolerant) {
+            // Standart dışı yazılmış dosyalar (diğer oynatıcıların açtığı ama "yapı bozuk" denen MP4/MKV'ler):
+            // düzenleme listesini yok say, bozuk dizin (cue) bilgisine göre atlama yapma
+            ex.setMp4ExtractorFlags(Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
+            ex.setFragmentedMp4ExtractorFlags(FragmentedMp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
+            ex.setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+        }
         return DefaultMediaSourceFactory(ds, ex)
     }
 
@@ -733,7 +743,11 @@ class NativePlayer(
         val idx = player.currentMediaItemIndex
         val pos = player.currentPosition.coerceAtLeast(0)
         val url = urlAt(idx)
-        if (url.isBlank() || vodTried.size >= 3) { showVodError(error); return }
+        if (url.isBlank() || vodTried.size >= 4) { showVodError(error); return }
+        // "Dosya yapısı bozuk": önce toleranslı okumayla aynı yerden yeniden dene (diğer oynatıcılar bu dosyaları açabiliyor)
+        if (error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED && "tol" !in vodTried) {
+            vodTried += "tol"; restartVod(idx, pos, vodUa, false, true); return
+        }
         val ua = vodUa
         Thread {
             val pr = probe(url, ua)
@@ -745,6 +759,7 @@ class NativePlayer(
                     pr.kind == "hls" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
                     blocked && "ua" !in vodTried -> { vodTried += "ua"; vodUa = vlcUa; restartVod(idx, pos, vlcUa, false) }
                     pr.kind == "unknown" && "hls" !in vodTried -> { vodTried += "hls"; restartVod(idx, pos, vodUa, true) }
+                    pr.kind in setOf("mp4", "mkv") && "tol" !in vodTried -> { vodTried += "tol"; restartVod(idx, pos, vodUa, false, true) }
                     else -> showVodError(error)
                 }
             }
@@ -752,8 +767,8 @@ class NativePlayer(
     }
 
     /** Film listesini yeni ayarlarla (User-Agent / HLS) aynı bölüm ve konumdan yeniden başlat. */
-    private fun restartVod(idx: Int, pos: Long, ua: String, forceHls: Boolean) {
-        val factory = sourceFactory(ua)
+    private fun restartVod(idx: Int, pos: Long, ua: String, forceHls: Boolean, tolerant: Boolean = false) {
+        val factory = sourceFactory(ua, tolerant || "tol" in vodTried)
         val sources = (0 until vodItems.length()).map { i ->
             val o = vodItems.getJSONObject(i)
             var item = mediaItem(o.getString("url")).buildUpon()
