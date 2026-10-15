@@ -71,12 +71,14 @@ class SafeRangeDataSource(
     private fun headerValue(name: String): String? =
         upstream.responseHeaders.entries.firstOrNull { it.key != null && it.key.equals(name, ignoreCase = true) }?.value?.firstOrNull()
 
-    /** Content-Range: "bytes 100-199/5000" ya da "bytes *\/5000" → (başlangıç, toplam) */
-    private fun contentRange(): Pair<Long, Long> {
-        val cr = headerValue("Content-Range") ?: return -1L to -1L
-        val m = Regex("bytes\\s+(?:(\\d+)-\\d+|\\*)/(\\d+|\\*)").find(cr) ?: return -1L to -1L
-        return (m.groupValues[1].toLongOrNull() ?: -1L) to (m.groupValues[2].toLongOrNull() ?: -1L)
+    /** Content-Range: "bytes 100-199/5000" ya da "bytes *\/5000" → (başlangıç, bitiş, toplam) */
+    private fun contentRange(): Triple<Long, Long, Long> {
+        val cr = headerValue("Content-Range") ?: return Triple(-1L, -1L, -1L)
+        val m = Regex("bytes\\s+(?:(\\d+)-(\\d+)|\\*)/(\\d+|\\*)").find(cr) ?: return Triple(-1L, -1L, -1L)
+        return Triple(m.groupValues[1].toLongOrNull() ?: -1L, m.groupValues[2].toLongOrNull() ?: -1L, m.groupValues[3].toLongOrNull() ?: -1L)
     }
+
+    private fun mbs(b: Long) = if (b < 0) "?" else "${b / 1048576} MB"
 
     private fun closeUpstreamQuietly() {
         if (!upstreamOpen) return
@@ -93,8 +95,11 @@ class SafeRangeDataSource(
             if (a > 0) {
                 try { Thread.sleep(1_000L * a) } catch (_: InterruptedException) { throw InterruptedIOException() }
             }
+            // Son denemede VLC gibi "buradan sonuna kadar" iste (sınırsız)
+            val openEnded = useChunks && attempts > 1 && a == attempts - 1
+            val chunkedNow = useChunks && !openEnded
             val reqLen = when {
-                useChunks -> if (end != UNSET) minOf(chunk, end - p) else chunk
+                chunkedNow -> if (end != UNSET) minOf(chunk, end - p) else chunk
                 end != UNSET -> end - p
                 else -> UNSET
             }
@@ -102,11 +107,28 @@ class SafeRangeDataSource(
             try {
                 val len = upstream.open(s)
                 upstreamOpen = true
-                val (crStart, crTotal) = contentRange()
+                val (crStart, crEnd, crTotal) = contentRange()
                 if (crTotal > 0) total = crTotal
+                var skipped = 0L
                 if (p > 0 && crStart >= 0 && crStart != p) {
-                    onNote("sunucu yanlış konum gönderdi")
-                    closeUpstreamQuietly(); continue
+                    val crRaw = headerValue("Content-Range") ?: ""
+                    if (crStart < p && (crEnd < 0 || crEnd >= p) && p - crStart <= SKIP_MAX) {
+                        // Sunucu biraz geriden başlattı (blok hizalaması): aradaki baytları okuyup at
+                        val buf = ByteArray(32 * 1024)
+                        while (skipped < p - crStart) {
+                            val r = upstream.read(buf, 0, minOf(buf.size.toLong(), p - crStart - skipped).toInt())
+                            if (r < 0) break
+                            skipped += r
+                        }
+                        onNote("${mbs(p)}: sunucu ${(p - crStart) / 1024} KB geriden başladı, atlandı")
+                        if (skipped < p - crStart) { closeUpstreamQuietly(); continue }
+                    } else {
+                        onNote("${mbs(p)} istendi → sunucu '$crRaw' gönderdi")
+                        closeUpstreamQuietly(); continue
+                    }
+                } else if (p > 0 && crStart < 0) {
+                    val code = headerValue("Content-Length")
+                    if (a == 0) onNote("${mbs(p)}: Content-Range yok (uzunluk ${code ?: "?"})")
                 }
                 pre = null; preLen = 0; prePos = 0
                 if (p > 0 && attempts > 1 && (total < 0 || p < total)) {
@@ -114,24 +136,24 @@ class SafeRangeDataSource(
                     val buf = ByteArray(16 * 1024)
                     val r = upstream.read(buf, 0, buf.size)
                     if (r == C.RESULT_END_OF_INPUT || r == 0) {
-                        onNote("ortadan okumada boş yanıt")
+                        onNote("${mbs(p)}: boş yanıt" + if (openEnded) " (sınırsız istekte de)" else "")
                         closeUpstreamQuietly(); continue
                     }
                     pre = buf; preLen = r
                 }
-                chunkReq = if (useChunks) (if (len != UNSET) len else reqLen) else -1L
-                chunkGot = 0L
+                chunkReq = if (chunkedNow) (if (len != UNSET) len else reqLen) else -1L
+                chunkGot = skipped
                 return len
             } catch (e: HttpDataSource.InvalidResponseCodeException) {
                 lastErr = e
                 upstreamOpen = true; closeUpstreamQuietly()
                 if (p == 0L || attempts == 1 || e.responseCode == 416) throw e
-                onNote("HTTP ${e.responseCode}")
+                onNote("${mbs(p)}: HTTP ${e.responseCode}")
             } catch (e: HttpDataSource.HttpDataSourceException) {
                 lastErr = e
                 upstreamOpen = true; closeUpstreamQuietly()
                 if (p == 0L || attempts == 1) throw e
-                onNote("bağlantı hatası")
+                onNote("${mbs(p)}: " + ((e.cause?.javaClass?.simpleName ?: e.javaClass.simpleName) + " " + (e.cause?.message ?: e.message ?: "")).trim().take(70))
             }
         }
         throw lastErr ?: IOException("Sunucu dosyanın ${p / 1048576} MB konumundan veri göndermedi")
@@ -191,5 +213,6 @@ class SafeRangeDataSource(
     private companion object {
         val RAMP = longArrayOf(64L * 1024, 256L * 1024, 1024L * 1024, 2L * 1024 * 1024)
         const val DRAIN_MAX = 2L * 1024 * 1024
+        const val SKIP_MAX = 16L * 1024 * 1024
     }
 }
