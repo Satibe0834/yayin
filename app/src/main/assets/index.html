@@ -247,6 +247,7 @@ video{width:100%;height:100%;background:#000;display:block}
 /* ================= TEMA GALERİSİ ================= */
 #bgLayer{position:fixed;inset:0;z-index:0;pointer-events:none;background:var(--ink)}
 #bgArt{position:absolute;inset:0;background:var(--home-art) center/cover no-repeat}
+#bgArt2{position:absolute;inset:0;background-position:center;background-size:cover;background-repeat:no-repeat;opacity:0}
 #fx{position:absolute;inset:0;width:100%;height:100%;display:block}
 #bgv{position:fixed;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;background:#000;display:none;pointer-events:none}
 html.live-bg #bgLayer{display:none}
@@ -722,7 +723,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 </head>
 <body>
 <video id="bgv" muted playsinline aria-hidden="true"></video>
-<div id="bgLayer" aria-hidden="true"><div id="bgArt"></div><canvas id="fx"></canvas></div>
+<div id="bgLayer" aria-hidden="true"><div id="bgArt"></div><div id="bgArt2"></div><canvas id="fx"></canvas></div>
 
 <!-- ================= HOME ================= -->
 <section class="home" id="home" aria-label="Ana ekran">
@@ -1291,7 +1292,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'full', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming:false, psiFix:true, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'full', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming:false, psiFix:true, slideMin:10, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
@@ -1555,20 +1556,28 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   const T = (id, cat, name, accent, o = {}) => TH.push({ id, cat, name, accent, ...o });
   [['red','Kızıl','#E3242B'],['blue','Gece mavisi','#2F7BF5'],['green','Saha yeşili','#17B26A'],['violet','Mor','#8B5CF6'],['teal','Turkuaz','#14B8A6'],
    ['orange','Turuncu','#F97316'],['pink','Pembe','#EC4899'],['gold','Altın','#EAB308'],['graphite','Grafit','#A3AEC2']].forEach(([id, n, c]) => T(id, 'renk', n, c));
-  T('dag','manzara','Dağda gün batımı','#F97316',{ art:() => ART.mountains({ seed:3, sky:['#2B1E4F','#C4507A','#FFB36B'], sun:{ x:1080, y:430, r:85, c:'#FFE3A3' }, layers:['#6B3F6E','#4A2C58','#2E1D3E','#170F24'] }) });
-  T('karli','manzara','Karlı zirveler','#60A5FA',{ art:() => ART.mountains({ seed:11, sky:['#0F2B55','#4F86C6','#CFE3F5'], snow:true, layers:['#7C93B0','#4E6684','#2E415C','#18243A'] }) });
-  T('sis','manzara','Sisli vadi','#34D399',{ art:() => ART.mountains({ seed:5, sky:['#1D2B2A','#5F7F78','#B9CFC6'], fog:true, layers:['#6A877C','#47645A','#2A403A','#152420'] }) });
-  T('mavisaat','manzara','Mavi saat','#818CF8',{ art:() => ART.mountains({ seed:21, sky:['#0B1030','#283A7A','#7C8BD0'], stars:true, layers:['#3A4A86','#2A3666','#1A2246','#0D1228'] }) });
-  T('deniz','manzara','Gün batımı denizi','#FB923C',{ art:() => ART.sea({ seed:2, sky:['#3B1C5A','#E0566A','#FFC07A'], sun:{ x:800, r:120, c:'#FFDCA0' }, sea:['#8A3B5E','#1E1838'] }) });
-  T('tropik','manzara','Tropik sahil','#2DD4BF',{ art:() => ART.sea({ seed:7, sky:['#0E6FA8','#56B6D9','#BDE8F0'], sun:{ x:1150, r:70, c:'#FFF6D5' }, sea:['#13A3B5','#0B3D5C'], palms:true }) });
+  T('dag','manzara','Dağda gün batımı','#F97316',{ photo:'themes/dag.jpg', thumb:'themes/dag_t.jpg', luma:{"mean": 0.506, "p90": 0.769} });
+  T('karli','manzara','Karlı zirveler','#60A5FA',{ photo:'themes/karli.jpg', thumb:'themes/karli_t.jpg', luma:{"mean": 0.628, "p90": 0.855} });
+  T('sis','manzara','Sisli vadi','#34D399',{ photo:'themes/sis.jpg', thumb:'themes/sis_t.jpg', luma:{"mean": 0.359, "p90": 0.584} });
+  T('mavisaat','manzara','Mavi saat','#818CF8',{ photo:'themes/mavisaat.jpg', thumb:'themes/mavisaat_t.jpg', luma:{"mean": 0.497, "p90": 0.804} });
+  T('deniz','manzara','Gün batımı denizi','#FB923C',{ photo:'themes/deniz.jpg', thumb:'themes/deniz_t.jpg', luma:{"mean": 0.434, "p90": 0.745} });
+  T('tropik','manzara','Tropik sahil','#2DD4BF',{ photo:'themes/tropik.jpg', thumb:'themes/tropik_t.jpg', luma:{"mean": 0.594, "p90": 0.886} });
   T('ay','manzara','Ay ışığı','#93C5FD',{ art:() => ART.sea({ seed:12, sky:['#050A1A','#13244A','#2C4677'], moon:{ x:1150, y:230, r:60 }, sea:['#1B2E52','#050A18'], stars:true }) });
-  T('orman','manzara','Çam ormanı','#22C55E',{ art:() => ART.forest({ seed:4, sky:['#18342B','#5A8A6E','#D7E8C8'], fog:true, layers:['#3E6B52','#2B5040','#1B3A2C','#0D2219'] }) });
-  T('sonbahar','manzara','Sonbahar ormanı','#F59E0B',{ art:() => ART.forest({ seed:8, sky:['#3A1C12','#B5532A','#F6C177'], sun:{ x:1200, y:330, r:70, c:'#FFE1A8' }, layers:['#A2502A','#7C3A1E','#562512','#2D1208'] }) });
-  T('col','manzara','Çöl','#F59E0B',{ art:() => ART.dunes({ seed:6, sky:['#3A2A6E','#E07A5F','#F9D29D'], sun:{ x:480, y:430, r:80, c:'#FFF1C9' }, dunes:['#E2A15C','#C9813F','#A9632B','#7A4318'] }) });
+  T('orman','manzara','Çam ormanı','#22C55E',{ photo:'themes/orman.jpg', thumb:'themes/orman_t.jpg', luma:{"mean": 0.335, "p90": 0.541} });
+  T('sonbahar','manzara','Sonbahar ormanı','#F59E0B',{ photo:'themes/sonbahar.jpg', thumb:'themes/sonbahar_t.jpg', luma:{"mean": 0.39, "p90": 0.616} });
+  T('col','manzara','Çöl','#F59E0B',{ photo:'themes/col.jpg', thumb:'themes/col_t.jpg', luma:{"mean": 0.422, "p90": 0.635} });
   T('kuzey','manzara','Kuzey ışıkları','#34D399',{ art:() => ART.aurora({ seed:14, c1:'#34F5A0', c2:'#7C5CFF' }) });
-  T('balon','manzara','Balon vadisi','#F97316',{ art:() => ART.balloons({ seed:19 }) });
+  T('balon','manzara','Balon vadisi','#F97316',{ photo:'themes/balon.jpg', thumb:'themes/balon_t.jpg', luma:{"mean": 0.495, "p90": 0.78} });
   T('lavanta','manzara','Lavanta tarlası','#A78BFA',{ art:() => ART.lavender({ seed:10 }) });
-  T('sehir','manzara','Şehir gecesi','#FBBF24',{ art:() => ART.city({ seed:15, glow:'#FF7A59', win:'#FFD27A' }) });
+  T('sehir','manzara','Şehir gecesi','#FBBF24',{ photo:'themes/sehir.jpg', thumb:'themes/sehir_t.jpg', luma:{"mean": 0.134, "p90": 0.216} });
+  T('kizkulesi','manzara','Kız Kulesi','#60A5FA',{ photo:'themes/kizkulesi.jpg', thumb:'themes/kizkulesi_t.jpg', luma:{"mean": 0.313, "p90": 0.451} });
+  T('karadeniz','manzara','Karadeniz sonbaharı','#84CC16',{ photo:'themes/karadeniz.jpg', thumb:'themes/karadeniz_t.jpg', luma:{"mean": 0.432, "p90": 0.91} });
+  T('liman','manzara','Karlı liman','#38BDF8',{ photo:'themes/liman.jpg', thumb:'themes/liman_t.jpg', luma:{"mean": 0.414, "p90": 0.631} });
+  T('kasaba','manzara','Karlı kasaba','#94A3B8',{ photo:'themes/kasaba.jpg', thumb:'themes/kasaba_t.jpg', luma:{"mean": 0.424, "p90": 0.6} });
+  T('sistepe','manzara','Sisli tepeler','#7DD3FC',{ photo:'themes/sistepe.jpg', thumb:'themes/sistepe_t.jpg', luma:{"mean": 0.512, "p90": 0.792} });
+  T('yamac','manzara','Sonbahar yamacı','#F97316',{ photo:'themes/yamac.jpg', thumb:'themes/yamac_t.jpg', luma:{"mean": 0.351, "p90": 0.522} });
+  T('kar','manzara','Kar ve bulut','#60A5FA',{ photo:'themes/kar.jpg', thumb:'themes/kar_t.jpg', luma:{"mean": 0.8, "p90": 0.925} });
+  T('gosteri','manzara','🎞 Manzara gösterisi','#E3242B',{ slide:true, thumb:'themes/dag_t.jpg' });
   [['sari-kirmizi','Sarı-Kırmızı','#FDB913','#B5122C'],['sari-lacivert','Sarı-Lacivert','#FFE11A','#0B2A6B'],['siyah-beyaz','Siyah-Beyaz','#F2F2F2','#111111'],
    ['bordo-mavi','Bordo-Mavi','#3FA9F5','#7A1631'],['yesil-beyaz','Yeşil-Beyaz','#18A957','#F2F2F2'],['kirmizi-beyaz','Kırmızı-Beyaz','#E21B2C','#F2F2F2'],
    ['mavi-beyaz','Mavi-Beyaz','#2E86DE','#F2F2F2'],['kirmizi-siyah','Kırmızı-Siyah','#E0262F','#111111'],['lacivert-kirmizi','Lacivert-Kırmızı','#D72638','#122A5C'],
@@ -1620,21 +1629,53 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       img.src = src;
     });
   }
+  // ---- Manzara gösterisi: fotoğraflı temalar arasında yumuşak geçişle otomatik değişim ----
+  const slideList = () => [...TH.filter(x => x.photo), { photo:DEF_BG, luma:DEF_BG_LUMA }];
+  let slideIdx = +(lsGet('yayin:slideIdx', 0)) || 0, slideT = null;
+  function slideCur(){ const L = slideList(); return L[((slideIdx % L.length) + L.length) % L.length]; }
+  function slideArm(t){
+    clearInterval(slideT); slideT = null;
+    if (!t.slide) return;
+    const min = +cfg.slideMin || 10;
+    slideT = setInterval(slideNext, min * 60e3);
+  }
+  function slideNext(){
+    if (document.hidden || document.documentElement.classList.contains('player-on')) return;   // video açıkken boşuna değiştirme
+    const L = slideList(); slideIdx = (slideIdx + 1) % L.length;
+    try { localStorage.setItem('yayin:slideIdx', JSON.stringify(slideIdx)); } catch {}
+    const next = slideCur(), img = new Image();
+    img.onload = () => {
+      const a2 = $('bgArt2'); if (!a2) return;
+      a2.style.backgroundImage = `url("${next.photo}")`;
+      a2.style.transition = 'opacity 1.6s ease'; a2.style.opacity = '1';
+      setTimeout(() => {
+        document.documentElement.style.setProperty('--home-art', `url("${next.photo}")`);
+        a2.style.transition = 'none'; a2.style.opacity = '0';
+        applyReadability(themeById(store.get('theme', DEF_THEME)));
+      }, 1700);
+    };
+    img.src = next.photo;
+  }
+
   function applyReadability(t){
     const root = document.documentElement;
     const src = t.id === 'custom' ? (store.get('customBg', '') || DEF_BG) : null;
+    const pre = t.photo ? t.luma : t.slide ? slideCur().luma : null;
     const set = l => {
       // açık bölgeler (p90) parladıkça yazı zemini koyulaşır; genel parlaklık (mean) arttıkça fotoğraf karartılır
       root.style.setProperty('--scrim', (l ? Math.min(.68, Math.max(.4, .4 + .7 * (l.p90 - .35))) : .48).toFixed(2));
-      if (t.id === 'custom' && store.get('customDim', 'auto') === 'auto')
+      if ((t.id === 'custom' && store.get('customDim', 'auto') === 'auto') || t.photo || t.slide)
         root.style.setProperty('--art-dim', (l ? Math.min(.6, Math.max(.25, .25 + .8 * (l.mean - .2))) : .4).toFixed(2));
     };
+    if (pre){ set(pre); return; }
     if (!src){ set(null); return; }
     measureLuma(src).then(l => { if (themeById(store.get('theme', DEF_THEME)).id === t.id) set(l); });
   }
   const artCache = new Map();
   function artUrl(t){
     if (t.id === 'custom') return `url("${store.get('customBg', '') || DEF_BG}")`;
+    if (t.photo) return `url("${t.photo}")`;
+    if (t.slide) return `url("${slideCur().photo}")`;
     if (t.live) return '';
     if (!t.art){
       const pal = palette(t), a = pal['--accent-rgb'];
@@ -1662,10 +1703,11 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const t = themeById(id), root = document.documentElement;
     Object.entries(palette(t)).forEach(([k, v]) => root.style.setProperty(k, v));
     const art = artUrl(t);
-    root.classList.toggle('plain-art', !t.art && t.id !== 'custom' && !t.live);
+    root.classList.toggle('plain-art', !t.art && !t.photo && !t.slide && t.id !== 'custom' && !t.live);
     root.classList.toggle('live-bg', !!t.live);
     if (art) root.style.setProperty('--home-art', art); else root.style.removeProperty('--home-art');
-    { const cd = store.get('customDim', 'auto'); root.style.setProperty('--art-dim', t.id === 'custom' ? (cd === 'auto' ? .35 : cd) : .12); }
+    { const cd = store.get('customDim', 'auto'); root.style.setProperty('--art-dim', t.id === 'custom' ? (cd === 'auto' ? .35 : cd) : (t.photo || t.slide) ? .35 : .12); }
+    slideArm(t);
     applyReadability(t);
     delete root.dataset.theme;
     const prev = store.get('theme', 'red');
@@ -1821,7 +1863,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   }
   $('thBack').onclick = closeThemes;
   function themeCard(t, i){
-    const pal = palette(t), art = artUrl(t), cur = store.get('theme', DEF_THEME) === t.id;
+    const pal = palette(t), art = t.thumb ? `url("${t.thumb}")` : artUrl(t), cur = store.get('theme', DEF_THEME) === t.id;
     const bg = art ? `background-image:${art.replace(/"/g, "&quot;")}` : `background:radial-gradient(90% 70% at 50% 0%, rgba(${pal['--accent-rgb']},.75), transparent 70%), ${pal['--ink']}`;
     const tile = `background:linear-gradient(160deg, rgba(${pal['--accent-rgb']},.75), rgba(${pal['--accent2-rgb']},.8))`;
     return `<button class="tcard" data-t="${t.id}" aria-pressed="${cur}"><div class="tprev" style="${bg}"><div class="tminis"><i style="${tile}"></i><i style="${tile}"></i><i style="${tile}"></i><i style="${tile}"></i></div></div>
@@ -1833,7 +1875,8 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const t = themeById(store.get('theme', DEF_THEME)); $('thNow').textContent = 'Seçili: ' + t.name;
     const seg = (key, opts) => opts.map(([v, l]) => `<button class="chip" data-tool="${key}" data-v="${v}" aria-pressed="${String(cfg[key]) === String(v)}">${l}</button>`).join('');
     $('thTools').innerHTML = `<span>Şeffaflık</span>${seg('tp', [['off','Kapalı'],['glass','Cam'],['full','Tam şeffaf']])}<span>Hareket</span>${seg('fx', [[true,'Açık'],[false,'Kapalı']])}`
-      + (t.live ? `<span>Arka plan sesi</span>${seg('bgSound', [[true,'Açık'],[false,'Kapalı']])}` : '');
+      + (t.live ? `<span>Arka plan sesi</span>${seg('bgSound', [[true,'Açık'],[false,'Kapalı']])}` : '')
+      + (t.slide ? `<span>Değişim</span>${seg('slideMin', [[5,'5 dk'],[10,'10 dk'],[30,'30 dk']])}` : '');
     let html = '';
     if (thCat === 'kendi'){
       const own = !!store.get('customBg', ''), has = true;   // hazır Uzungöl fotoğrafı her zaman var
@@ -1855,6 +1898,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const k = b.dataset.tool, v = b.dataset.v === 'true' ? true : b.dataset.v === 'false' ? false : b.dataset.v;
     cfg[k] = v; saveCfg(); applyTp();
     if (k === 'bgSound') bgLiveSync();
+    if (k === 'slideMin') slideArm(themeById(store.get('theme', DEF_THEME)));
     renderThemes(); $('thTools').querySelector(`[data-tool="${k}"][data-v="${b.dataset.v}"]`)?.focus();
   };
   $('thCats').onclick = e => { const b = e.target.closest('.chip'); if (!b) return; thCat = b.dataset.c; renderThemes(); $('thCats').querySelector(`[data-c="${thCat}"]`).focus(); };
@@ -4284,7 +4328,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'info', label:'Platform', value:platform },
       { type:'info', label:'Oynatıcı', value:() => NATIVE ? 'Media3 ExoPlayer (donanım çözücü)' : 'Tarayıcı (hls.js / mpegts.js)' },
       { type:'info', label:'Cihaz kimliği', value:() => dev.id },
-      { type:'info', label:'Arka plan fotoğrafı', value:() => 'Uzungöl · yıldırım yiğit / Pexels' },
+      { type:'info', label:'Arka plan fotoğrafları', value:() => 'Pexels — yıldırım yiğit, Marek Piwnicki, zkadoshi, pfotenfotograf, peederopecta, Quang Nguyen Vinh, Pixabay, Mikhail Peace, valiphotos, liuguangxi, trksami, mutecevvil, Murat Marangoz, Özer Özçelik, Orhan Namlı, Özgür Sürmeli, Radosław Krupa, Sandy' },
       { type:'info', label:'Cihaz anahtarı', value:() => dev.key },
       { type:'info', label:'İçerik', value:() => { const n = {live:0,movie:0}; channels.forEach(c => n[c.kind] !== undefined && n[c.kind]++); return `${n.live} kanal · ${n.movie} film · ${(XT ? seriesAll || [] : getSeries()).length} dizi`; } },
       XT && xinfo && { type:'info', label:'Hesap oluşturma', value:() => fmtDate(xinfo.created_at) },
