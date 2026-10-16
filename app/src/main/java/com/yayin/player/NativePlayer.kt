@@ -573,6 +573,8 @@ class NativePlayer(
     private var lastPos = -1L
     private var stuckSince = 0L
     private var bufSince = 0L
+    private var lastBufPos = -1L
+    private var lastBufEmit = 0L
     private val reconnects = ArrayDeque<Long>()
 
     private fun startLiveWatch() {
@@ -597,8 +599,16 @@ class NativePlayer(
                 }
                 Player.STATE_BUFFERING -> {
                     lastPos = -1L
-                    if (bufSince == 0L) bufSince = now
-                    else if (now - bufSince > 6_000) reconnectLive()
+                    // Veri gelmeye devam ediyorsa (yavaş internet) bağlantıyı KESME: biriken veri boşa gider,
+                    // yayın hiç yürümez. Yalnızca hiç veri gelmiyorsa (bağlantı ölü) yeniden bağlan.
+                    val buf = player.bufferedPosition
+                    if (buf > lastBufPos) {
+                        lastBufPos = buf; bufSince = now
+                        // Arayüzün 10 sn'lik "takıldı → başka biçim dene" sayacını da ertele (veri geliyor, bekle)
+                        if (now - lastBufEmit > 5_000) { lastBufEmit = now; emit("buffering") }
+                    }
+                    else if (bufSince == 0L) bufSince = now
+                    else if (now - bufSince > 10_000) reconnectLive()
                 }
                 else -> { lastPos = -1L; bufSince = 0L }
             }
@@ -611,7 +621,7 @@ class NativePlayer(
         val item = player.currentMediaItem ?: return
         val now = android.os.SystemClock.elapsedRealtime()
         while (reconnects.isNotEmpty() && now - reconnects.first() > 120_000) reconnects.removeFirst()
-        lastPos = -1L; bufSince = 0L; stuckSince = now
+        lastPos = -1L; bufSince = 0L; stuckSince = now; lastBufPos = -1L
         if (reconnects.size >= 4) {
             hadPlayed = false
             emit("error", JSONObject().put("code", "LIVE_RECONNECT"))
