@@ -464,7 +464,7 @@ class NativePlayer(
         }
         mode = Mode.LIVE
         liveRetries = 0
-        hadPlayed = false; reconnects.clear(); startLiveWatch()
+        hadPlayed = false; reconnects.clear(); vStuckFired = 0; startLiveWatch()
         view.visibility = View.VISIBLE
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
@@ -577,8 +577,27 @@ class NativePlayer(
     private var lastBufEmit = 0L
     private val reconnects = ArrayDeque<Long>()
 
+    // Görüntü donuk ama ses akıyor: çözücü takıldı. Arayüze hata bildir → başka yöntem (HLS / FFmpeg'siz) denenir
+    private var lastRendered = -1
+    private var vStuckSince = 0L
+    private var vStuckFired = 0
+
+    private fun checkVideoStuck(now: Long) {
+        if (player.videoFormat == null || vStuckFired >= 2) return
+        val vc = player.videoDecoderCounters ?: return
+        vc.ensureUpdated()
+        val r = vc.renderedOutputBufferCount
+        if (r != lastRendered) { lastRendered = r; vStuckSince = now; return }
+        if (now - vStuckSince > 5_000) {
+            vStuckFired++
+            lastRendered = -1; vStuckSince = now
+            emit("error", JSONObject().put("code", "VIDEO_STUCK"))
+        }
+    }
+
     private fun startLiveWatch() {
         main.removeCallbacks(liveWatch)
+        lastRendered = -1; vStuckSince = android.os.SystemClock.elapsedRealtime()
         lastPos = -1L; bufSince = 0L
         main.postDelayed(liveWatch, 2_000)
     }
@@ -594,7 +613,7 @@ class NativePlayer(
                 Player.STATE_READY -> {
                     bufSince = 0L
                     val p = player.currentPosition
-                    if (p != lastPos) { lastPos = p; stuckSince = now }
+                    if (p != lastPos) { lastPos = p; stuckSince = now; checkVideoStuck(now) }
                     else if (now - stuckSince > 8_000) reconnectLive()
                 }
                 Player.STATE_BUFFERING -> {
