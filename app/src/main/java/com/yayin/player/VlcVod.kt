@@ -38,6 +38,7 @@ class VlcVod(
         fun onVlcEnded()
         fun onVlcError(msg: String)
         fun onVlcNext(delta: Int)
+        fun onVlcStall()
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -101,8 +102,22 @@ class VlcVod(
         override fun run() {
             if (released) return
             paintTime()
+            checkStall()
             main.postDelayed(this, 500)
         }
+    }
+
+    // Donma bekçisi: kullanıcı duraklatmadığı hâlde film 15 sn ilerlemezse yeniden bağlan
+    private var userPaused = false
+    private var lastT = -1L
+    private var stuckAt = 0L
+    private fun checkStall() {
+        val p = mp ?: return
+        if (!started || userPaused) { lastT = -1L; return }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val t = p.time
+        if (t != lastT) { lastT = t; stuckAt = now; return }
+        if (now - stuckAt > 15_000) { stuckAt = now; cb.onVlcStall() }
     }
 
     fun showOverlay(ms: Long = 4_000) {
@@ -137,13 +152,13 @@ class VlcVod(
     fun play(url: String, title: String, sub: String, startMs: Long, ua: String, audio: String, subLang: String, volume: Float, aspect: String) {
         titleText.text = title; subText.text = sub
         subText.visibility = if (sub.isBlank()) View.GONE else View.VISIBLE
+        userPaused = false; lastT = -1L
         started = false; lengthMs = 0L; lastBuf = -1f; lastState = "başlamadı"; sawVout = false
         spinner.visibility = View.VISIBLE
         showOverlay(6_000)
         val l = lib ?: LibVLC(activity, arrayListOf(
             "--network-caching=8000",      // 8 sn arabellek: yavaş sunucuda takılmayı azaltır
             "--file-caching=3000",
-            "--audio-time-stretch",
             "--no-stats",
         )).also { lib = it }
         val p = mp ?: MediaPlayer(l).also { np ->
@@ -222,11 +237,11 @@ class VlcVod(
 
     fun toggle() {
         val p = mp ?: return
-        if (p.isPlaying) p.pause() else p.play()
+        if (p.isPlaying) { p.pause(); userPaused = true } else { p.play(); userPaused = false }
         showOverlay()
     }
-    fun pause() { mp?.let { if (it.isPlaying) it.pause() } }
-    fun resume() { mp?.play() }
+    fun pause() { mp?.let { if (it.isPlaying) it.pause() }; userPaused = true }
+    fun resume() { mp?.play(); userPaused = false }
     fun setVolume(v: Float) { mp?.setVolume((v * 100).toInt().coerceIn(0, 100)) }
 
     fun seekBy(ms: Long) {

@@ -770,6 +770,13 @@ class NativePlayer(
                 showVodError(PlaybackException(msg, null, PlaybackException.ERROR_CODE_UNSPECIFIED), idx)
             }
         }
+        override fun onVlcStall() {
+            val v = vlc ?: return
+            if (vlcResumes >= 5) { onVlcError("film sürekli donuyor"); return }
+            vlcResumes++
+            addVodNote("donma, yeniden bağlanıldı")
+            playVlcItem(vlcIndex, v.timeMs, vlcCurOverride)
+        }
         override fun onVlcNext(delta: Int) {
             val ni = vlcIndex + delta
             if (ni !in 0 until vodItems.length()) return
