@@ -72,6 +72,10 @@ class VlcVod(
         setTextColor(Color.argb(160, 255, 255, 255)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         text = "OK: duraklat  ·  ◀ ▶: 10 sn  ·  ▲: ses dili  ·  ▼: altyazı  ·  CH +/-: bölüm"
     }
+    // Teşhis satırı: indirme hızı, atlanan kare, takılma sayısı
+    private val statText = TextView(activity).apply {
+        setTextColor(Color.argb(200, 255, 220, 120)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+    }
     private val stateText = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); paint.isFakeBoldText = true
     }
@@ -87,7 +91,8 @@ class VlcVod(
             addView(timeText, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
         addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
-        addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        addView(statText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) })
     }
 
     init {
@@ -103,8 +108,30 @@ class VlcVod(
             if (released) return
             paintTime()
             checkStall()
+            if (++tickN % 4 == 0) updateStats()
             main.postDelayed(this, 500)
         }
+    }
+
+    private var tickN = 0
+    private var lastRead = -1L
+    private var lastReadAt = 0L
+    private var kbps = 0
+    private var stalls = 0
+    private var wasBuffering = false
+
+    /** Her 2 sn: sunucudan gelen hız (Mbit/sn), atlanan kare sayısı, takılma sayısı */
+    private fun updateStats() {
+        val p = mp ?: return
+        try {
+            val m = p.media ?: return
+            val st = try { (m as? Media)?.stats } finally { m.release() } ?: return
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (lastRead >= 0 && now > lastReadAt) kbps = (((st.readBytes - lastRead) * 8L) / (now - lastReadAt)).toInt()
+            lastRead = st.readBytes.toLong(); lastReadAt = now
+            val mbit = String.format(java.util.Locale.GERMANY, "%.1f", kbps / 1000.0)
+            statText.text = "📶 $mbit Mbit/sn  ·  atlanan kare ${st.lostPictures}  ·  gösterilen ${st.displayedPictures}  ·  takılma $stalls"
+        } catch (_: Throwable) {}
     }
 
     // Donma bekçisi: kullanıcı duraklatmadığı hâlde film 15 sn ilerlemezse yeniden bağlan
@@ -152,7 +179,7 @@ class VlcVod(
     fun play(url: String, title: String, sub: String, startMs: Long, ua: String, audio: String, subLang: String, volume: Float, aspect: String) {
         titleText.text = title; subText.text = sub
         subText.visibility = if (sub.isBlank()) View.GONE else View.VISIBLE
-        userPaused = false; lastT = -1L
+        userPaused = false; lastT = -1L; lastRead = -1L; kbps = 0
         started = false; lengthMs = 0L; lastBuf = -1f; lastState = "başlamadı"; sawVout = false
         spinner.visibility = View.VISIBLE
         showOverlay(6_000)
@@ -213,7 +240,10 @@ class VlcVod(
                 }
                 paintTime()
             }
-            MediaPlayer.Event.Buffering -> { lastBuf = e.buffering; spinner.visibility = if (e.buffering < 100f) View.VISIBLE else View.GONE }
+            MediaPlayer.Event.Buffering -> {
+                if (started && e.buffering < 100f && !wasBuffering) { stalls++; wasBuffering = true; showOverlay(6_000) }
+                if (e.buffering >= 100f) wasBuffering = false
+                lastBuf = e.buffering; spinner.visibility = if (e.buffering < 100f) View.VISIBLE else View.GONE }
             MediaPlayer.Event.TimeChanged -> {
                 if (!started && e.timeChanged > 0) {
                     started = true; spinner.visibility = View.GONE
