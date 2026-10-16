@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 
 /**
@@ -22,7 +23,23 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
  * DTS…) kendisi çözebiliyorsa onu kullanır, çözemiyorsa FFmpeg devreye girer.
  */
 @OptIn(UnstableApi::class)
-class YayinRenderers(context: Context, private val useFfmpeg: Boolean) : DefaultRenderersFactory(context) {
+class YayinRenderers(context: Context, private val useFfmpeg: Boolean, private val applyOffset: Boolean = false) : DefaultRenderersFactory(context) {
+
+    /**
+     * Ses gecikmesi: bazı kanallarda ses görüntüden önce geliyor (sağlayıcının yayını).
+     * Ses saatini kaydırarak görüntüyü sesle hizalar. Pozitif değer = ses o kadar geç duyulur gibi.
+     */
+    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink? {
+        val sink = super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams) ?: return null
+        if (!applyOffset) return sink
+        return object : ForwardingAudioSink(sink) {
+            override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+                val p = super.getCurrentPositionUs(sourceEnded)
+                if (p == AudioSink.CURRENT_POSITION_NOT_SET || !offsetActive) return p
+                return p + audioOffsetUs
+            }
+        }
+    }
 
     /** Oynatıcıdaki FFmpeg ses çözücüsünün sırası (-1: yok). Tek kanalda kapatmak için. */
     var ffmpegIndex = -1
@@ -53,6 +70,9 @@ class YayinRenderers(context: Context, private val useFfmpeg: Boolean) : Default
     }
 
     companion object {
+        /** Canlı yayın için ses gecikmesi (mikrosaniye) ve yalnızca canlı yayında uygulanması */
+        @Volatile var audioOffsetUs = 0L
+        @Volatile var offsetActive = false
         @Volatile var broken = false
         @Volatile private var checked = false
         @Volatile private var ok = false

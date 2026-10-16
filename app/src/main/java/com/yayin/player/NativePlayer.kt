@@ -72,7 +72,7 @@ class NativePlayer(
     enum class Mode { NONE, LIVE, VOD }
 
     var mode = Mode.NONE
-        private set
+        private set(v) { field = v; YayinRenderers.offsetActive = v == Mode.LIVE }
 
     private val main = Handler(Looper.getMainLooper())
     private var vodItems = JSONArray()
@@ -155,7 +155,7 @@ class NativePlayer(
         // Cihazın çözücüleri + gerekirse FFmpeg ses (önceki çökmede FFmpeg suçluysa kapalı kalır)
         val ffmpegAllowed = ffmpegMode != "off" &&
             !activity.getSharedPreferences("yayin", android.content.Context.MODE_PRIVATE).getBoolean("ffmpegBroken", false)
-        val renderers = YayinRenderers(activity, ffmpegAllowed)
+        val renderers = YayinRenderers(activity, ffmpegAllowed, applyOffset = handleAudioFocus)
 
         // Arabellek profili: hızlı başlangıçta 0,5 sn veri gelince oynatmaya başlar
         val (minB, maxB, startB, rebufB) = when (bufferProfile) {
@@ -632,6 +632,9 @@ class NativePlayer(
         player.clearMediaItems()
         view.visibility = View.GONE
     }
+
+    /** JS'ten: bu kanal için ses gecikmesi (ms). Pozitif: ses geciktirilir. */
+    fun setAudioDelay(ms: Int) { YayinRenderers.audioOffsetUs = ms.coerceIn(-3000, 5000) * 1000L }
 
     fun toggle() { if (vlcActive) { vlc?.toggle(); return }; player.playWhenReady = !player.playWhenReady }
     fun setMuted(m: Boolean) { player.volume = if (m) 0f else lastVolume; if (vlcActive) vlc?.setVolume(if (m) 0f else lastVolume) }
