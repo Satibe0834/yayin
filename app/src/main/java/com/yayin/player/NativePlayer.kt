@@ -259,7 +259,7 @@ class NativePlayer(
         setFfmpegForChannel(noFfmpeg)
         if (retry && liveVlcOn && vlcLive?.url == url) vlcLive?.stop()
         // Kurtarma denemesi: aynı kanal takılıp kaldıysa "zaten açık" sayılmasın, baştan yükle
-        if (retry && mode == Mode.LIVE && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) player.stop()
+        if (retry && mode == Mode.LIVE && liveReqUrl == url) player.stop()
         playLive(url)
     }
 
@@ -372,6 +372,13 @@ class NativePlayer(
                         return
                     }
                 }
+                if (mode == Mode.LIVE && seamlessActive && !hadPlayed && liveReqUrl != null && toHls(liveReqUrl!!) != null) {
+                    // Sağlayıcı bu kanalı HLS olarak vermiyor: normal yoldan aç
+                    val u = liveReqUrl!!
+                    seamlessFailed.add(u)
+                    main.post { forceLive(u) }
+                    return
+                }
                 if (mode == Mode.LIVE) {
                     // Canlı yayında geride kalma ya da kısa ağ kopmasında sessizce yeniden bağlan
                     if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW || liveRetries < 2) {
@@ -412,11 +419,17 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         vodEngine = o.optString("vodEngine", "vlc")
+        val newSeamless = o.optBoolean("seamless", false)
+        if (newSeamless != seamless) {
+            seamless = newSeamless
+            val u = if (liveVlcOn) vlcLive?.url else liveReqUrl
+            if (mode == Mode.LIVE && u != null) main.post { forceLive(u) }
+        }
         val newLive = o.optString("liveEngine", "exo")
         if (newLive != liveEngine) {
             liveEngine = newLive
             // Motor değiştiyse açık kanalı yeni motorla yeniden aç
-            val u = if (liveVlcOn) vlcLive?.url else player.currentMediaItem?.localConfiguration?.uri?.toString()
+            val u = if (liveVlcOn) vlcLive?.url else liveReqUrl
             if (mode == Mode.LIVE && u != null) main.post { forceLive(u) }
         }
         quality = o.optString("quality", "max")
@@ -461,7 +474,7 @@ class NativePlayer(
     fun playLive(url: String) {
         triedAsHls = false
         if (mode == Mode.VOD) closeVod(notify = false)
-        if (liveEngine == "vlc" && !vlcLiveBroken && playLiveVlc(url)) return
+        if (liveEngine == "vlc" && !seamless && !vlcLiveBroken && playLiveVlc(url)) return
         if (liveVlcOn) stopLiveVlc()
         if (mode == Mode.LIVE && ts != null && tsUrl == url) {
             view.visibility = View.VISIBLE
@@ -469,8 +482,7 @@ class NativePlayer(
             return
         }
         // Aynı kanal zaten oynuyorsa (ör. ana menü arka planından Canlı TV'ye geçiş) yeniden yükleme
-        if (mode == Mode.LIVE && player.playbackState != Player.STATE_IDLE &&
-            player.currentMediaItem?.localConfiguration?.uri?.toString() == url) {
+        if (mode == Mode.LIVE && player.playbackState != Player.STATE_IDLE && liveReqUrl == url) {
             startLiveWatch()
             view.visibility = View.VISIBLE
             player.playWhenReady = true
@@ -486,11 +498,16 @@ class NativePlayer(
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
         tStart = android.os.SystemClock.elapsedRealtime(); tHeaders = 0L; timingSent = false
-        psiUrl = if (isAdaptive(url)) null else url
+        // Kesintisiz mod: aynı kanalı HLS olarak 30 sn geriden aç; 30 sn'lik pay açılışta hazır olur
+        liveReqUrl = url
+        val hlsUrl = if (seamless && url !in seamlessFailed) toHls(url) else null
+        seamlessActive = seamless && (hlsUrl != null || isAdaptive(url))
+        val playUrl = hlsUrl ?: url
+        psiUrl = if (isAdaptive(playUrl)) null else playUrl
         // Canlı yayında Fire TV'den kare hızı değişikliği isteme: "Orijinal kare hızına uyarla"
         // açıkken her kanal açılışında ekran modu yeniden kuruluyor ve 1-3 sn gecikme oluyordu.
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
-        player.setMediaItem(mediaItem(url))
+        player.setMediaItem(if (seamlessActive) seamlessItem(playUrl) else mediaItem(playUrl))
         player.prepare()
         player.playWhenReady = true
     }
@@ -504,6 +521,25 @@ class NativePlayer(
     private val tsBlocked = HashSet<String>()
 
     private fun isAdaptive(url: String) = url.lowercase().let { "m3u8" in it || ".mpd" in it }
+
+    // ---------------- Kesintisiz mod ----------------
+    private var seamless = false
+    private var seamlessActive = false
+    private var liveReqUrl: String? = null
+    private val seamlessFailed = HashSet<String>()
+
+    /** Xtream canlı adresi .../live/kullanıcı/şifre/123.ts → .../123.m3u8 (HLS); dönüştürülemezse null */
+    private fun toHls(url: String): String? {
+        if (isAdaptive(url)) return null
+        val m = Regex("^(.*/live/[^?#]+?)\\.(ts|mpegts)([?#].*)?$", RegexOption.IGNORE_CASE).find(url) ?: return null
+        return m.groupValues[1] + ".m3u8" + m.groupValues[3]
+    }
+
+    private fun seamlessItem(url: String): MediaItem = MediaItem.Builder().setUri(url)
+        .setMimeType(MimeTypes.APPLICATION_M3U8)
+        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder()
+            .setTargetOffsetMs(30_000).setMinOffsetMs(15_000).setMaxOffsetMs(90_000).build())
+        .build()
 
     private fun startTimeshift(url: String) {
         stopTimeshift()
@@ -738,7 +774,7 @@ class NativePlayer(
         player.playbackParameters = if (slow) PlaybackParameters(SLOW_SPEED) else PlaybackParameters.DEFAULT
     }
     private fun smartBuffer() {
-        if (!player.isPlaying) return
+        if (!player.isPlaying || seamlessActive) return
         val buf = player.totalBufferedDuration
         // Hedef pay ~7 sn: bu sağlayıcı yayını düzenli olarak 1-3 sn duraklatıyor
         if (!slowed && buf < 5_000) setSpeed(true)
@@ -795,6 +831,7 @@ class NativePlayer(
 
     fun stop() {
         if (mode == Mode.VOD) return
+        liveReqUrl = null
         if (liveVlcOn) stopLiveVlc()
         stopTimeshift()
         mode = Mode.NONE
@@ -1092,7 +1129,7 @@ class NativePlayer(
         val vf = player.videoFormat
         val af = player.audioFormat
         if (vs.width <= 0 && vf == null && af == null) return
-        val o = JSONObject().put("engine", "ExoPlayer")
+        val o = JSONObject().put("engine", if (mode == Mode.LIVE && seamlessActive) "ExoPlayer · kesintisiz (30 sn)" else "ExoPlayer")
             .put("w", if (vs.width > 0) vs.width else (vf?.width ?: 0))
             .put("h", if (vs.height > 0) vs.height else (vf?.height ?: 0))
         vf?.let {
