@@ -47,8 +47,8 @@ class VlcLive(
     private fun ensure(): MediaPlayer {
         mp?.let { return it }
         val l = lib ?: LibVLC(activity, arrayListOf(
-            "--network-caching=1500",
-            "--live-caching=1500",
+            "--network-caching=6000",      // 6 sn pay: sağlayıcının düzenli kısa duraklamalarını örter
+            "--live-caching=6000",
             "--no-stats",
         )).also { lib = it }
         return MediaPlayer(l).also { p ->

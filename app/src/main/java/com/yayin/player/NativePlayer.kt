@@ -730,7 +730,7 @@ class NativePlayer(
     // Kanal hızlı açılsın diye oynatma çok az veriyle başlar; canlı yayında bu pay kendiliğinden büyümez ve
     // küçük bir ağ aksamasında görüntü takılır. Çözüm: arabellek 3 sn'den azken yayın fark edilmeyecek kadar
     // yavaş (%96, ses perdesi korunur) oynatılır; arka planda pay birikir. 3,5 sn'yi geçince normal hıza döner.
-    private val SLOW_SPEED = 0.96f
+    private val SLOW_SPEED = 0.95f
     private var slowed = false
     private fun setSpeed(slow: Boolean) {
         if (slow == slowed) return
@@ -740,8 +740,9 @@ class NativePlayer(
     private fun smartBuffer() {
         if (!player.isPlaying) return
         val buf = player.totalBufferedDuration
-        if (!slowed && buf < 2_500) setSpeed(true)
-        else if (slowed && buf >= 3_500) setSpeed(false)
+        // Hedef pay ~7 sn: bu sağlayıcı yayını düzenli olarak 1-3 sn duraklatıyor
+        if (!slowed && buf < 5_000) setSpeed(true)
+        else if (slowed && buf >= 7_000) setSpeed(false)
     }
 
     // Takılma kaydı (kanal başına): kaç kez yükleme başladı, son takılmadan önce arabellek ne kadardı,
