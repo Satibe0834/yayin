@@ -22,6 +22,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
@@ -72,7 +73,7 @@ class NativePlayer(
     enum class Mode { NONE, LIVE, VOD }
 
     var mode = Mode.NONE
-        private set(v) { field = v; YayinRenderers.offsetActive = v == Mode.LIVE }
+        private set(v) { field = v; YayinRenderers.offsetActive = v == Mode.LIVE; updateOrientation() }
 
     private val main = Handler(Looper.getMainLooper())
     private var vodItems = JSONArray()
@@ -465,6 +466,7 @@ class NativePlayer(
         mode = Mode.LIVE
         liveRetries = 0
         hadPlayed = false; reconnects.clear(); vStuckFired = 0; startLiveWatch()
+        slowed = false; player.playbackParameters = PlaybackParameters.DEFAULT
         view.visibility = View.VISIBLE
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
@@ -613,7 +615,7 @@ class NativePlayer(
                 Player.STATE_READY -> {
                     bufSince = 0L
                     val p = player.currentPosition
-                    if (p != lastPos) { lastPos = p; stuckSince = now; checkVideoStuck(now) }
+                    if (p != lastPos) { lastPos = p; stuckSince = now }
                     else if (now - stuckSince > 8_000) reconnectLive()
                 }
                 Player.STATE_BUFFERING -> {
@@ -631,8 +633,37 @@ class NativePlayer(
                 }
                 else -> { lastPos = -1L; bufSince = 0L }
             }
+            if (mode == Mode.LIVE) { smartBuffer(); liveStats() }
             main.postDelayed(this, 2_000)
         }
+    }
+
+    // ---------------- Akıllı arabellek ----------------
+    // Kanal hızlı açılsın diye oynatma çok az veriyle başlar; canlı yayında bu pay kendiliğinden büyümez ve
+    // küçük bir ağ aksamasında görüntü takılır. Çözüm: arabellek 3 sn'den azken yayın fark edilmeyecek kadar
+    // yavaş (%96, ses perdesi korunur) oynatılır; arka planda pay birikir. 3,5 sn'yi geçince normal hıza döner.
+    private val SLOW_SPEED = 0.96f
+    private var slowed = false
+    private fun setSpeed(slow: Boolean) {
+        if (slow == slowed) return
+        slowed = slow
+        player.playbackParameters = if (slow) PlaybackParameters(SLOW_SPEED) else PlaybackParameters.DEFAULT
+    }
+    private fun smartBuffer() {
+        if (!player.isPlaying) return
+        val buf = player.totalBufferedDuration
+        if (!slowed && buf < 2_500) setSpeed(true)
+        else if (slowed && buf >= 3_500) setSpeed(false)
+    }
+
+    /** Bilgi paneli için ölçüm: arabellek (sn) ve atlanan kare sayısı */
+    private fun liveStats() {
+        val vc = player.videoDecoderCounters
+        vc?.ensureUpdated()
+        emit("lstat", JSONObject()
+            .put("buf", player.totalBufferedDuration / 1000.0)
+            .put("drop", vc?.droppedBufferCount ?: 0)
+            .put("slow", slowed))
     }
 
     /** Aynı kanalı baştan bağlar. 2 dakikada 4'ten fazla gerekirse arayüzün kurtarma adımlarına bırakır. */
@@ -660,6 +691,23 @@ class NativePlayer(
         player.stop()
         player.clearMediaItems()
         view.visibility = View.GONE
+    }
+
+    // ---------------- Telefon: ekran yönü ----------------
+    // Telefonda film/dizi ve tam ekran canlı yayın yatay açılır; liste ekranlarında telefon serbest döner.
+    // TV'de hiçbir şey değişmez.
+    val isTvDevice: Boolean by lazy {
+        val ui = activity.getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
+        ui.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+            activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+    }
+    private var jsLandscape = false
+    fun setJsLandscape(on: Boolean) { jsLandscape = on; updateOrientation() }
+    private fun updateOrientation() {
+        if (isTvDevice) return
+        val want = if (mode == Mode.VOD || jsLandscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                   else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (activity.requestedOrientation != want) activity.requestedOrientation = want
     }
 
     /** JS'ten: bu kanal için ses gecikmesi (ms). Pozitif: ses geciktirilir. */
@@ -723,6 +771,7 @@ class NativePlayer(
     /** Film/diziyi ExoPlayer ile oynat (eski yöntem; VLC açamazsa yedek). */
     private fun startExo(index: Int, startMs: Long) {
         exoTried = true
+        slowed = false; player.playbackParameters = PlaybackParameters.DEFAULT
         vodStarted = false
         val items = (0 until vodItems.length()).map { i ->
             val o = vodItems.getJSONObject(i)
@@ -802,6 +851,7 @@ class NativePlayer(
                 showVodError(PlaybackException(msg, null, PlaybackException.ERROR_CODE_UNSPECIFIED), idx)
             }
         }
+        override fun onVlcClose() { closeVod() }
         override fun onVlcStall() {
             val v = vlc ?: return
             if (vlcResumes >= 5) { onVlcError("film sürekli donuyor"); return }
@@ -827,7 +877,7 @@ class NativePlayer(
         aux.forEach { it?.let { a -> a.stop(); a.clearMediaItems() } }   // önizleme / çoklu ekran bağlantıları da kapansın
         view.hideController()
         view.visibility = View.GONE
-        val v = vlc ?: try { VlcVod(activity, root, vlcCb) } catch (t: Throwable) {
+        val v = vlc ?: try { VlcVod(activity, root, vlcCb, touch = !isTvDevice) } catch (t: Throwable) {
             vlcBroken = true; addVodNote("VLC yüklenemedi"); startExo(index, startMs); return
         }
         vlc = v; vlcActive = true
