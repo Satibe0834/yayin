@@ -419,6 +419,8 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         vodEngine = o.optString("vodEngine", "vlc")
+        matchRate = o.optBoolean("matchRate", true)
+        if (!matchRate) resetDisplay()
         val newSeamless = o.optBoolean("seamless", false)
         if (newSeamless != seamless) {
             seamless = newSeamless
@@ -632,8 +634,16 @@ class NativePlayer(
     private val liveVlcReconnects = ArrayDeque<Long>()
 
     private val liveCb = object : VlcLive.Callbacks {
-        override fun onLiveBuffering() { if (liveVlcOn) emit("buffering") }
-        override fun onLivePlaying() { if (liveVlcOn) emit("playing") }
+        override fun onLiveBuffering() {
+            if (!liveVlcOn) return
+            if (vlcLiveStarted) vlcStalls++
+            emit("buffering")
+        }
+        override fun onLivePlaying() {
+            if (!liveVlcOn) return
+            if (!vlcLiveStarted) { vlcLiveStarted = true; vlcWatchStart = System.currentTimeMillis() }
+            emit("playing")
+        }
         override fun onLiveEnded() {
             // Sağlayıcı bağlantıyı kapattı: aynı kanala sessizce yeniden bağlan (2 dk'da en fazla 4 kez)
             val u = vlcLive?.url ?: return
@@ -648,13 +658,54 @@ class NativePlayer(
         override fun onLiveInfo(w: Int, h: Int, fps: Double, codec: String) {
             if (!liveVlcOn) return
             val o = JSONObject().put("w", w).put("h", h).put("engine", "VLC")
-            if (fps > 0) o.put("fps", fps)
+            if (fps > 0) { o.put("fps", fps); matchDisplay(fps.toFloat()) }
             if (codec.isNotBlank()) o.put("vcodec", codec)
             emit("info", o)
         }
     }
 
     private fun liveUa() = if (userAgent != defaultUserAgent) userAgent else ""
+
+    // VLC takılma sayacı (bilgi panelinde gösterilir)
+    private var vlcStalls = 0
+    private var vlcLiveStarted = false
+    private var vlcWatchStart = 0L
+    private val vlcStatTick: Runnable = object : Runnable {
+        override fun run() {
+            if (!liveVlcOn) return
+            emit("lstat", JSONObject().put("stalls", vlcStalls)
+                .put("watched", if (vlcWatchStart > 0) (System.currentTimeMillis() - vlcWatchStart) / 1000 else 0))
+            main.postDelayed(this, 2_000)
+        }
+    }
+
+    // ---------------- Ekranı yayının kare hızına eşle ----------------
+    // 50 kare/sn'lik yayın 60 Hz ekranda düzenli tökezler (bazı kareler iki kez gösterilir). Kare hızı
+    // bilinince TV'yi uygun moda (ör. 50 Hz) geçirir; aynı kare hızındaki kanallar arasında tekrar geçiş olmaz.
+    private var matchRate = true
+    private fun matchDisplay(fps: Float) {
+        if (!matchRate || !isTvDevice || fps < 10f || android.os.Build.VERSION.SDK_INT < 23) return
+        try {
+            @Suppress("DEPRECATION") val disp = activity.windowManager.defaultDisplay
+            val cur = disp.mode
+            fun err(rate: Float): Float { val r = rate / fps; val k = Math.round(r); return if (k < 1) 99f else Math.abs(r - k) }
+            if (err(cur.refreshRate) < 0.01f) return          // şu anki mod zaten uygun (ör. 25 kare → 50 Hz)
+            val best = disp.supportedModes
+                .filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight && err(it.refreshRate) < 0.01f }
+                .minByOrNull { Math.abs(it.refreshRate - cur.refreshRate) } ?: return
+            val lp = activity.window.attributes
+            if (lp.preferredDisplayModeId == best.modeId) return
+            lp.preferredDisplayModeId = best.modeId
+            activity.window.attributes = lp
+        } catch (_: Throwable) {}
+    }
+    /** Uygulamadan çıkınca TV kendi varsayılan moduna dönsün */
+    private fun resetDisplay() {
+        try {
+            val lp = activity.window.attributes
+            if (lp.preferredDisplayModeId != 0) { lp.preferredDisplayModeId = 0; activity.window.attributes = lp }
+        } catch (_: Throwable) {}
+    }
 
     // VLC bu kanalı açamadıysa hata gösterme: kanalı ExoPlayer ile aç ve bu oturumda o kanal için VLC'yi deneme
     private val vlcLiveFailed = HashSet<String>()
@@ -683,6 +734,8 @@ class NativePlayer(
         try { v.play(url, liveUa(), lastVolume, YayinRenderers.audioOffsetUs) } catch (t: Throwable) {
             vlcLiveBroken = true; stopLiveVlc(); return false
         }
+        vlcStalls = 0; vlcLiveStarted = false; vlcWatchStart = 0L
+        main.removeCallbacks(vlcStatTick); main.postDelayed(vlcStatTick, 2_000)
         emit("buffering")
         return true
     }
@@ -1142,7 +1195,7 @@ class NativePlayer(
             .put("w", if (vs.width > 0) vs.width else (vf?.width ?: 0))
             .put("h", if (vs.height > 0) vs.height else (vf?.height ?: 0))
         vf?.let {
-            if (it.frameRate > 0) o.put("fps", it.frameRate.toDouble())
+            if (it.frameRate > 0) { o.put("fps", it.frameRate.toDouble()); if (mode == Mode.LIVE) matchDisplay(it.frameRate) }
             o.put("vmime", it.sampleMimeType ?: "")
             val br = if (it.bitrate > 0) it.bitrate else it.peakBitrate
             if (br > 0) o.put("vbr", br)
@@ -1432,6 +1485,7 @@ class NativePlayer(
     }
 
     fun onPause() {
+        resetDisplay()
         aux.forEach { it?.playWhenReady = false }
         if (vlcActive) {
             wasPlayingOnPause = vlc?.isPlaying == true
