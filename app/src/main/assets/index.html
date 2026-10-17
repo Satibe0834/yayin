@@ -3313,7 +3313,17 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (nativeVodOpen || $('player').classList.contains('hidden')) return;
     if (evt === 'info'){ setInfo(d); return; }
     // Canlı yayın ölçümü (2 sn'de bir): ekranı yeniden çizmeden sakla, bilgi panelinde gösterilir
-    if (evt === 'lstat'){ if (current){ if (!sInfo || sInfo.url !== current.url) sInfo = { url:current.url }; sInfo.buf = d.buf; sInfo.drop = d.drop; sInfo.slow = d.slow; } return; }
+    if (evt === 'lstat'){
+      if (current){
+        if (!sInfo || sInfo.url !== current.url) sInfo = { url:current.url };
+        sInfo.buf = d.buf; sInfo.drop = d.drop; sInfo.slow = d.slow;
+        // Sağ sütundaki etiketleri yerinde güncelle (paneli baştan çizmeden)
+        const b = $('qbBuf'), dr = $('qbDrop');
+        if (b) b.textContent = bufText(sInfo);
+        if (dr) dr.textContent = `${tx('Atlanan kare')}: ${d.drop}`;
+      }
+      return;
+    }
     if (evt === 'buffering'){ showMsg('load'); armStall(); }
     else if (evt === 'playing'){ showMsg(null); $('play').textContent = '❚❚'; liveOk(); recoverOk(); openTimed(); }
     else if (evt === 'paused') $('play').textContent = '▶';
@@ -3384,6 +3394,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     sInfo = Object.assign({}, sInfo && sInfo.url === current.url ? sInfo : { url:current.url }, d);
     paintInfo();
   }
+  const bufText = i => `⏱ ${tx('Arabellek')} ${i.buf != null ? (+i.buf).toFixed(1).replace('.', ',') + ' sn' + (i.slow ? ' ↑' : '') : '…'}`;
   function qualityBadges(i, big){
     if (!i) return '';
     const out = []; const q = qLabel(i.w, i.h);
@@ -3394,8 +3405,8 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       const vc = codecName(i.vmime || i.vcodec, VMIME); if (vc) out.push(`<span class="qb">${esc(vc)}</span>`);
       const ac = codecName(i.amime || i.acodec, AMIME), ch = chName(i.ch); if (ac || ch) out.push(`<span class="qb">${esc([ac, ch].filter(Boolean).join(' '))}</span>`);
       if (i.vbr) out.push(`<span class="qb">${(i.vbr / 1e6).toFixed(1)} Mbit/sn</span>`);
-      if (i.buf != null) out.push(`<span class="qb" title="${tx('Arabellek')}">⏱ ${tx('Arabellek')} ${(+i.buf).toFixed(1)} sn${i.slow ? ' ↑' : ''}</span>`);
-      if (i.drop != null) out.push(`<span class="qb">${tx('Atlanan kare')}: ${i.drop}</span>`);
+      out.push(`<span class="qb" id="qbBuf">${bufText(i)}</span>`);
+      out.push(`<span class="qb" id="qbDrop">${tx('Atlanan kare')}: ${i.drop != null ? i.drop : '…'}</span>`);
     }
     return out.join('');
   }
