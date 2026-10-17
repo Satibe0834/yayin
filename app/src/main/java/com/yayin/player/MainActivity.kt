@@ -436,6 +436,7 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface fun nativePreconnect(url: String) { native.preconnect(url) }
         @JavascriptInterface fun nativeAspect(mode: String) = runOnUiThread { native.setAspect(mode) }
         @JavascriptInterface fun nativeAudioDelay(ms: Int) = runOnUiThread { native.setAudioDelay(ms) }
+        @JavascriptInterface fun nativeLandscape(on: Boolean) = runOnUiThread { native.setJsLandscape(on) }
         @JavascriptInterface fun nativeConfig(json: String) = runOnUiThread { native.applyConfig(json) }
         @JavascriptInterface fun nativeCloseVod() = runOnUiThread { native.closeVod() }
 

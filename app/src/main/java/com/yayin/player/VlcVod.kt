@@ -14,6 +14,9 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.SeekBar
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.widget.TextView
 import android.widget.Toast
 import org.videolan.libvlc.LibVLC
@@ -32,6 +35,8 @@ class VlcVod(
     private val activity: MainActivity,
     private val root: FrameLayout,
     private val cb: Callbacks,
+    /** Telefon/tablet: dokunmatik düğmeler ve sürüklenebilir zaman çubuğu */
+    private val touch: Boolean = false,
 ) {
     interface Callbacks {
         fun onVlcStarted()
@@ -39,6 +44,7 @@ class VlcVod(
         fun onVlcError(msg: String)
         fun onVlcNext(delta: Int)
         fun onVlcStall()
+        fun onVlcClose()
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -62,8 +68,21 @@ class VlcVod(
     private val subText = TextView(activity).apply {
         setTextColor(Color.argb(190, 255, 255, 255)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
     }
-    private val bar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+    private var dragging = false
+    private val bar = SeekBar(activity).apply {
         max = 1000; progress = 0
+        isFocusable = false
+        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, v: Int, fromUser: Boolean) {
+                if (fromUser && lengthMs > 0) timeText.text = "${fmt(lengthMs * v / 1000)} / ${fmt(lengthMs)}"
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) { dragging = true; main.removeCallbacks(hideOverlay) }
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                dragging = false
+                val p = mp; if (p != null && lengthMs > 0) p.setTime(lengthMs * sb.progress / 1000)
+                showOverlay()
+            }
+        })
     }
     private val timeText = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -79,6 +98,32 @@ class VlcVod(
     private val stateText = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); paint.isFakeBoldText = true
     }
+    private fun touchBtn(label: String, onTap: () -> Unit) = TextView(activity).apply {
+        text = label; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+        gravity = Gravity.CENTER; setPadding(dp(14), dp(8), dp(14), dp(8))
+        background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(Color.argb(110, 255, 255, 255)) }
+        isFocusable = false
+        setOnClickListener { onTap(); showOverlay() }
+    }
+    private val touchRow = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        val lp = { LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { setMargins(dp(5), 0, dp(5), 0) } }
+        addView(touchBtn("⏮") { cb.onVlcNext(-1) }, lp())
+        addView(touchBtn("⏪ 10") { seekBy(-10_000) }, lp())
+        addView(touchBtn("⏯") { toggle() }, lp())
+        addView(touchBtn("10 ⏩") { seekBy(10_000) }, lp())
+        addView(touchBtn("⏭") { cb.onVlcNext(1) }, lp())
+        addView(touchBtn("🔊") { cycleAudio() }, lp())
+        addView(touchBtn("💬") { cycleSub() }, lp())
+    }
+    private val closeBtn = TextView(activity).apply {
+        text = "✕"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        gravity = Gravity.CENTER; isFocusable = false
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(120, 0, 0, 0)) }
+        setOnClickListener { cb.onVlcClose() }
+    }
+
     private val overlay = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(32), dp(48), dp(32), dp(22))
@@ -92,17 +137,34 @@ class VlcVod(
         }
         addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
         addView(statText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
-        addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) })
+        if (touch) addView(touchRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
+        else addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) })
     }
 
     init {
         container.addView(videoLayout, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         container.addView(spinner, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
         container.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
+        if (touch) {
+            container.addView(closeBtn, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.START).apply { setMargins(dp(16), dp(16), 0, 0) })
+            // Dokunma: bir kez → kontrolleri göster/gizle; çift dokunma sol/sağ yarı → 10 sn geri/ileri
+            val gd = GestureDetector(activity, object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent) = true
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    if (overlay.visibility == View.VISIBLE) { overlay.visibility = View.GONE; closeBtn.visibility = View.GONE }
+                    else showOverlay()
+                    return true
+                }
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    seekBy(if (e.x < container.width / 2f) -10_000 else 10_000); return true
+                }
+            })
+            container.setOnTouchListener { _, ev -> gd.onTouchEvent(ev); true }
+        }
         root.addView(container, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
     }
 
-    private val hideOverlay = Runnable { if (mp?.isPlaying == true) overlay.visibility = View.GONE }
+    private val hideOverlay = Runnable { if (mp?.isPlaying == true && !dragging) { overlay.visibility = View.GONE; closeBtn.visibility = View.GONE } }
     private val tick = object : Runnable {
         override fun run() {
             if (released) return
@@ -149,6 +211,7 @@ class VlcVod(
 
     fun showOverlay(ms: Long = 4_000) {
         overlay.visibility = View.VISIBLE
+        if (touch) closeBtn.visibility = View.VISIBLE
         paintTime()
         main.removeCallbacks(hideOverlay)
         main.postDelayed(hideOverlay, ms)
@@ -164,6 +227,7 @@ class VlcVod(
         val p = mp ?: return
         val t = p.time.coerceAtLeast(0)
         val len = if (p.length > 0) p.length else lengthMs
+        if (dragging) return
         if (len > 0) { lengthMs = len; bar.progress = ((t * 1000) / len).toInt().coerceIn(0, 1000) }
         timeText.text = if (len > 0) "${fmt(t)} / ${fmt(len)}" else fmt(t)
         stateText.text = if (p.isPlaying) "▶" else "❚❚"
