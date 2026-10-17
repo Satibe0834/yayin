@@ -86,7 +86,7 @@ html.live-bg .home::before{background:linear-gradient(180deg, rgba(0,0,0,.45), r
   .pills{order:3;width:100%}
   .topbar{row-gap:12px}
 }
-@media (max-width:600px){.now{flex-basis:100%}.ctrls{width:100%;justify-content:space-between}}
+@media (max-width:600px){.now{flex-basis:100%}.ctrls{width:100%;justify-content:space-between;flex-wrap:wrap;row-gap:6px}#vol,#pip{display:none}}
 
 /* ================= PLAYER ================= */
 .app{display:grid;grid-template-columns:340px 1fr;height:100%}
@@ -592,6 +592,12 @@ html.has-fy .tile{aspect-ratio:1/0.92}
 @font-face{font-family:'PersetLogo';src:url(data:font/woff;base64,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) format('woff');font-weight:700;font-style:normal;font-display:block}
 .plogo{display:inline-flex;align-items:baseline;gap:0;font-family:'PersetLogo','Poppins',var(--display);font-weight:700;font-size:29px;letter-spacing:-.015em;line-height:1;color:#fff;white-space:nowrap}
 .plogo b{color:#D00D33;font-weight:700}
+.memb{width:66px;height:66px;margin:-14px 2px -14px -4px;flex:none;border-radius:50%;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+.plogo2{display:inline-flex;align-items:center;gap:10px;font-family:'PersetLogo','Poppins',var(--display);font-weight:800;line-height:1;white-space:nowrap}
+.plogo2 .pw{color:#fff;font-size:25px;letter-spacing:.16em}
+.plogo2 .ptv{background:#C8102E;color:#fff;font-size:16px;letter-spacing:.08em;padding:4px 9px 3px;border-radius:3px}
+html.tv .memb{filter:none}
+@media (max-width:600px){.memb{width:52px;height:52px;margin:-10px 0}.plogo2 .pw{font-size:19px;letter-spacing:.12em}.plogo2 .ptv{font-size:13px}}
 .mark{gap:4px}
 .mark .globe{width:104px;height:82px;margin:-22px -10px -22px -14px;flex:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
 
@@ -733,7 +739,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 <!-- ================= HOME ================= -->
 <section class="home" id="home" aria-label="Ana ekran">
   <header class="topbar">
-    <div class="mark" aria-label="PersetTV" data-notr><svg class="globe" viewBox="-2 -2 124 98" overflow="visible"  xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><radialGradient id="hgrg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#F0244A"/><stop offset=".55" stop-color="#D00D33"/><stop offset="1" stop-color="#8E0722"/></radialGradient><clipPath id="hgsp"><circle cx="60" cy="50" r="30"/></clipPath><clipPath id="hgback"><rect x="-20" y="-20" width="160" height="85"/></clipPath><clipPath id="hgfront"><rect x="-20" y="65" width="160" height="80"/></clipPath><path id="hgring" d="M8,65 a52,22 0 1,0 104,0 a52,22 0 1,0 -104,0 a52,22 0 1,0 104,0 a52,22 0 1,0 -104,0" fill="none"/></defs><g transform="rotate(-12 60 65)" clip-path="url(#hgback)" opacity="0.3"><text font-family="PersetLogo,Poppins,sans-serif" font-weight="700" font-size="12.5" letter-spacing="0.7" fill="#FFFFFF"><textPath href="#hgring" startOffset="0%"><tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> <tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> <tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> </textPath></text></g><circle cx="60" cy="50" r="30" fill="url(#hgrg)"/><g clip-path="url(#hgsp)"><ellipse cx="60" cy="50" rx="30.0" ry="30" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><ellipse cx="60" cy="50" rx="24.416353699876016" ry="30" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><ellipse cx="60" cy="50" rx="14.927131436751809" ry="30" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><ellipse cx="60" cy="50" rx="6.570200612791245" ry="30" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><line x1="37.6393202250021" y1="30" x2="82.36067977499789" y2="30" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><line x1="31.715728752538098" y1="40" x2="88.2842712474619" y2="40" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><line x1="30.0" y1="50" x2="90.0" y2="50" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><line x1="31.715728752538098" y1="60" x2="88.2842712474619" y2="60" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><line x1="37.6393202250021" y1="70" x2="82.36067977499789" y2="70" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/><path d="M35,42 C36,28 52,21 64,25 C72,28 70,38 61,40 C53,42 49,46 46,53 C43,59 34,54 35,42Z" fill="#fff" opacity=".93"/><ellipse cx="63" cy="68" rx="7.5" ry="4.8" fill="#fff" opacity=".93"/><ellipse cx="86" cy="48" rx="2.5" ry="6" fill="#fff" opacity=".8"/></g><circle cx="60" cy="50" r="30" fill="none" stroke="#071D39" stroke-width="1.6"/><g transform="rotate(-12 60 65)" clip-path="url(#hgfront)" opacity="1"><text font-family="PersetLogo,Poppins,sans-serif" font-weight="700" font-size="12.5" letter-spacing="0.7" fill="#FFFFFF"><textPath href="#hgring" startOffset="0%"><tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> <tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> <tspan fill="#D00D33">•</tspan> Perset <tspan fill="#D00D33">TV</tspan> </textPath></text></g></svg><span class="plogo">Perset<b>TV</b></span></div>
+    <div class="mark" aria-label="PersetTV" data-notr><img class="memb" src="logo_emblem.png" alt=""><span class="plogo2"><span class="pw">PERSET</span><span class="ptv">TV</span></span></div>
     <nav class="pills">
       <button class="pill" id="hTheme"><span class="ic">🎨</span>Kanal teması</button>
       <button class="pill" id="hServer"><span class="ic">⇄</span>Liste değiştir</button>
@@ -2546,6 +2552,15 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   $('fs').onclick = () => toggleFS($('stage'));
   $('pip').onclick = () => document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture?.().catch(()=>{});
   $('stage').addEventListener('dblclick', () => $('fs').onclick());
+  // Telefon: tam ekran canlı yayında ve web oynatıcıda ekranı yatay çevir, çıkınca serbest bırak
+  function phoneOrient(){
+    if (!APP || IS_TV || !NATIVE || !NATIVE.nativeLandscape) return;
+    const P = $('player');
+    const want = (!P.classList.contains('hidden') && (P.classList.contains('nosidebar') || $('stage').classList.contains('fake-fs')))
+      || !$('watch').classList.contains('hidden');
+    if (want !== phoneOrient.last){ phoneOrient.last = want; NATIVE.nativeLandscape(want); }
+  }
+  ['player','stage','watch'].forEach(id => new MutationObserver(phoneOrient).observe($(id), { attributes:true, attributeFilter:['class'] }));
   $('goHome').onclick = showHome;
 
   // ---------- Keyboard / remote ----------
