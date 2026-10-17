@@ -257,6 +257,7 @@ class NativePlayer(
     /** JS'ten: kanalı belirli bir yöntemle aç (noFfmpeg: bu kanalda FFmpeg'siz dene). */
     fun playLiveEx(url: String, noFfmpeg: Boolean, retry: Boolean) {
         setFfmpegForChannel(noFfmpeg)
+        if (retry && liveVlcOn && vlcLive?.url == url) vlcLive?.stop()
         // Kurtarma denemesi: aynı kanal takılıp kaldıysa "zaten açık" sayılmasın, baştan yükle
         if (retry && mode == Mode.LIVE && player.currentMediaItem?.localConfiguration?.uri?.toString() == url) player.stop()
         playLive(url)
@@ -411,6 +412,13 @@ class NativePlayer(
         val newUa = o.optString("ua", "").trim().ifBlank { defaultUserAgent }
         audioLang = o.optString("audioLang", "")
         vodEngine = o.optString("vodEngine", "vlc")
+        val newLive = o.optString("liveEngine", "exo")
+        if (newLive != liveEngine) {
+            liveEngine = newLive
+            // Motor değiştiyse açık kanalı yeni motorla yeniden aç
+            val u = if (liveVlcOn) vlcLive?.url else player.currentMediaItem?.localConfiguration?.uri?.toString()
+            if (mode == Mode.LIVE && u != null) main.post { forceLive(u) }
+        }
         quality = o.optString("quality", "max")
         tsEnabled = false   // Canlı geri sarma kaldırıldı (kanal açılışını yavaşlatıyordu)
         psiFixEnabled = o.optBoolean("psiFix", true)
@@ -453,6 +461,8 @@ class NativePlayer(
     fun playLive(url: String) {
         triedAsHls = false
         if (mode == Mode.VOD) closeVod(notify = false)
+        if (liveEngine == "vlc" && !vlcLiveBroken && playLiveVlc(url)) return
+        if (liveVlcOn) stopLiveVlc()
         if (mode == Mode.LIVE && ts != null && tsUrl == url) {
             view.visibility = View.VISIBLE
             player.playWhenReady = true
@@ -562,13 +572,86 @@ class NativePlayer(
         .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
 
     /** Web arayüzündeki oynatıcı alanının konumu (CSS piksel). */
+    private var lastRect: IntArray? = null
+    private fun rectLp(): FrameLayout.LayoutParams {
+        val r = lastRect ?: return FrameLayout.LayoutParams(0, 0)
+        return FrameLayout.LayoutParams(r[2], r[3]).apply { leftMargin = r[0]; topMargin = r[1] }
+    }
     fun setRect(x: Float, y: Float, w: Float, h: Float) {
         if (mode == Mode.VOD) return
         val d = activity.resources.displayMetrics.density
-        view.layoutParams = FrameLayout.LayoutParams((w * d).toInt(), (h * d).toInt()).apply {
-            leftMargin = (x * d).toInt()
-            topMargin = (y * d).toInt()
+        lastRect = intArrayOf((x * d).toInt(), (y * d).toInt(), (w * d).toInt(), (h * d).toInt())
+        view.layoutParams = rectLp()
+        vlcLive?.setLayout(rectLp())
+    }
+
+    // ---------------- Canlı TV: VLC motoru ----------------
+    // Ayarlar → Oynatma → "Canlı TV oynatıcı: VLC". XCIPTV'nin kullandığı motor; ExoPlayer'da takılan
+    // yayınlarda akıcı oynatır. Açılamazsa ExoPlayer'a geri dönülür.
+    private var liveEngine = "exo"
+    private var vlcLive: VlcLive? = null
+    private var vlcLiveBroken = false
+    var liveVlcOn = false
+        private set
+    private val liveVlcReconnects = ArrayDeque<Long>()
+
+    private val liveCb = object : VlcLive.Callbacks {
+        override fun onLiveBuffering() { if (liveVlcOn) emit("buffering") }
+        override fun onLivePlaying() { if (liveVlcOn) emit("playing") }
+        override fun onLiveEnded() {
+            // Sağlayıcı bağlantıyı kapattı: aynı kanala sessizce yeniden bağlan (2 dk'da en fazla 4 kez)
+            val u = vlcLive?.url ?: return
+            val now = android.os.SystemClock.elapsedRealtime()
+            while (liveVlcReconnects.isNotEmpty() && now - liveVlcReconnects.first() > 120_000) liveVlcReconnects.removeFirst()
+            if (liveVlcReconnects.size >= 4) { emit("error", JSONObject().put("code", "VLC_ENDED")); return }
+            liveVlcReconnects.addLast(now)
+            emit("buffering")
+            vlcLive?.play(u, liveUa(), lastVolume, YayinRenderers.audioOffsetUs)
         }
+        override fun onLiveError() { if (liveVlcOn) emit("error", JSONObject().put("code", "VLC_ERROR")) }
+        override fun onLiveInfo(w: Int, h: Int, fps: Double, codec: String) {
+            if (!liveVlcOn) return
+            val o = JSONObject().put("w", w).put("h", h).put("engine", "VLC")
+            if (fps > 0) o.put("fps", fps)
+            if (codec.isNotBlank()) o.put("vcodec", codec)
+            emit("info", o)
+        }
+    }
+
+    private fun liveUa() = if (userAgent != defaultUserAgent) userAgent else ""
+
+    /** VLC ile aç. Motor yüklenemezse false döner (ExoPlayer kullanılır). */
+    private fun playLiveVlc(url: String): Boolean {
+        val v = vlcLive ?: try { VlcLive(activity, root, liveCb).also { vlcLive = it } } catch (t: Throwable) {
+            vlcLiveBroken = true; return false
+        }
+        // Aynı kanal zaten açıksa yeniden yükleme
+        if (mode == Mode.LIVE && liveVlcOn && v.url == url) { emit("playing"); return true }
+        // ExoPlayer'ı durdur, görüntüsünü gizle
+        player.stop(); player.clearMediaItems(); view.visibility = View.GONE
+        stopTimeshift()
+        mode = Mode.LIVE
+        liveVlcOn = true
+        liveVlcReconnects.clear()
+        main.removeCallbacks(liveWatch)
+        v.setLayout(rectLp())
+        try { v.play(url, liveUa(), lastVolume, YayinRenderers.audioOffsetUs) } catch (t: Throwable) {
+            vlcLiveBroken = true; stopLiveVlc(); return false
+        }
+        emit("buffering")
+        return true
+    }
+
+    private fun stopLiveVlc() {
+        liveVlcOn = false
+        vlcLive?.stop()
+    }
+
+    /** Motor değişince aynı kanalı baştan aç */
+    private fun forceLive(url: String) {
+        if (liveVlcOn) stopLiveVlc() else { player.stop(); player.clearMediaItems() }
+        mode = Mode.NONE
+        playLive(url)
     }
 
     // ---------------- Canlı yayın bekçisi ----------------
@@ -711,6 +794,7 @@ class NativePlayer(
 
     fun stop() {
         if (mode == Mode.VOD) return
+        if (liveVlcOn) stopLiveVlc()
         stopTimeshift()
         mode = Mode.NONE
         player.stop()
@@ -736,12 +820,12 @@ class NativePlayer(
     }
 
     /** JS'ten: bu kanal için ses gecikmesi (ms). Pozitif: ses geciktirilir. */
-    fun setAudioDelay(ms: Int) { YayinRenderers.audioOffsetUs = ms.coerceIn(-3000, 5000) * 1000L }
+    fun setAudioDelay(ms: Int) { YayinRenderers.audioOffsetUs = ms.coerceIn(-3000, 5000) * 1000L; if (liveVlcOn) vlcLive?.setAudioDelay(YayinRenderers.audioOffsetUs) }
 
-    fun toggle() { if (vlcActive) { vlc?.toggle(); return }; player.playWhenReady = !player.playWhenReady }
-    fun setMuted(m: Boolean) { player.volume = if (m) 0f else lastVolume; if (vlcActive) vlc?.setVolume(if (m) 0f else lastVolume) }
+    fun toggle() { if (vlcActive) { vlc?.toggle(); return }; if (liveVlcOn) { vlcLive?.toggle(); return }; player.playWhenReady = !player.playWhenReady }
+    fun setMuted(m: Boolean) { player.volume = if (m) 0f else lastVolume; if (vlcActive) vlc?.setVolume(if (m) 0f else lastVolume); if (liveVlcOn) vlcLive?.setVolume(if (m) 0f else lastVolume) }
     private var lastVolume = 1f
-    fun setVolume(v: Float) { lastVolume = v.coerceIn(0f, 1f); player.volume = lastVolume; if (vlcActive) vlc?.setVolume(lastVolume) }
+    fun setVolume(v: Float) { lastVolume = v.coerceIn(0f, 1f); player.volume = lastVolume; if (vlcActive) vlc?.setVolume(lastVolume); if (liveVlcOn) vlcLive?.setVolume(lastVolume) }
 
     private val warmed = HashMap<String, Long>()
 
@@ -783,6 +867,7 @@ class NativePlayer(
         triedAsHls = false
         vodTried.clear(); vodUa = userAgent; lastProbe = null; vodChunked = true; vodNotes.clear(); vodStarted = false
         if (vodItems.length() == 0) return
+        if (liveVlcOn) stopLiveVlc()
         mode = Mode.VOD
         web.visibility = View.INVISIBLE
         vlcTried = false; exoTried = false
@@ -1006,7 +1091,7 @@ class NativePlayer(
         val vf = player.videoFormat
         val af = player.audioFormat
         if (vs.width <= 0 && vf == null && af == null) return
-        val o = JSONObject()
+        val o = JSONObject().put("engine", "ExoPlayer")
             .put("w", if (vs.width > 0) vs.width else (vf?.width ?: 0))
             .put("h", if (vs.height > 0) vs.height else (vf?.height ?: 0))
         vf?.let {
@@ -1307,6 +1392,7 @@ class NativePlayer(
             vlc?.pause()
             return
         }
+        if (liveVlcOn) { wasPlayingOnPause = true; vlcLive?.pause(); return }
         wasPlayingOnPause = player.playWhenReady
         // Uygulama arka plana geçince canlı yayını indirmeyi bırak (bant genişliği / bağlantı)
         if (ts != null && mode == Mode.LIVE) { tsResumeUrl = tsUrl; stopTimeshift() }
@@ -1316,6 +1402,7 @@ class NativePlayer(
 
     fun onResume() {
         if (vlcActive) { if (wasPlayingOnPause) vlc?.resume(); return }
+        if (liveVlcOn) { vlcLive?.let { v -> val u = v.url; if (u != null) v.play(u, liveUa(), lastVolume, YayinRenderers.audioOffsetUs) }; return }
         val ru = tsResumeUrl
         if (ru != null) {
             tsResumeUrl = null
@@ -1330,6 +1417,7 @@ class NativePlayer(
 
     fun release() {
         releaseVlc()
+        vlcLive?.release(); vlcLive = null; liveVlcOn = false
         stopTimeshift()
         main.removeCallbacksAndMessages(null)
         aux.forEach { it?.release() }
