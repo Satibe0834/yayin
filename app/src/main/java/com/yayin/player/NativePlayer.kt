@@ -317,7 +317,11 @@ class NativePlayer(
             }
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_BUFFERING -> emit("buffering")
+                    Player.STATE_BUFFERING -> {
+                        // Takılma kaydı: izlerken veri bitip yükleme başladıysa say, o anki arabelleği sakla
+                        if (mode == Mode.LIVE && hadPlayed) { stallCount++; lastStallBuf = lastTickBuf; lastStallAt = System.currentTimeMillis() }
+                        emit("buffering")
+                    }
                     Player.STATE_READY -> { liveRetries = 0; if (player.playWhenReady) emit("playing") }
                     // Canlı yayında "bitti" = sağlayıcı bağlantıyı kapattı (çoğu 5-15 dk'da bir yapar): aynı kanala sessizce yeniden bağlan
                     Player.STATE_ENDED -> if (mode == Mode.VOD) closeVod() else if (mode == Mode.LIVE) reconnectLive() else emit("ended")
@@ -467,6 +471,7 @@ class NativePlayer(
         liveRetries = 0
         hadPlayed = false; reconnects.clear(); vStuckFired = 0; startLiveWatch()
         slowed = false; player.playbackParameters = PlaybackParameters.DEFAULT
+        stallCount = 0; lastStallBuf = -1.0; lastStallAt = 0L; lastTickBuf = -1.0; minBuf = -1.0; watchStart = 0L
         view.visibility = View.VISIBLE
         if (tsEnabled && !isAdaptive(url) && url !in tsBlocked) { startTimeshift(url); return }
         stopTimeshift()
@@ -656,14 +661,34 @@ class NativePlayer(
         else if (slowed && buf >= 3_500) setSpeed(false)
     }
 
-    /** Bilgi paneli için ölçüm: arabellek (sn) ve atlanan kare sayısı */
+    // Takılma kaydı (kanal başına): kaç kez yükleme başladı, son takılmadan önce arabellek ne kadardı,
+    // en düşük arabellek ve kaç saniyedir izleniyor
+    private var stallCount = 0
+    private var lastStallBuf = -1.0
+    private var lastStallAt = 0L
+    private var lastTickBuf = -1.0
+    private var minBuf = -1.0
+    private var watchStart = 0L
+
+    /** Bilgi paneli için ölçüm: arabellek (sn), atlanan kare, takılma kaydı */
     private fun liveStats() {
         val vc = player.videoDecoderCounters
         vc?.ensureUpdated()
+        val buf = player.totalBufferedDuration / 1000.0
+        if (player.isPlaying) {
+            lastTickBuf = buf
+            if (minBuf < 0 || buf < minBuf) minBuf = buf
+            if (watchStart == 0L) watchStart = System.currentTimeMillis()
+        }
         emit("lstat", JSONObject()
-            .put("buf", player.totalBufferedDuration / 1000.0)
+            .put("buf", buf)
             .put("drop", vc?.droppedBufferCount ?: 0)
-            .put("slow", slowed))
+            .put("slow", slowed)
+            .put("stalls", stallCount)
+            .put("lastStallBuf", lastStallBuf)
+            .put("lastStallAgo", if (lastStallAt > 0) (System.currentTimeMillis() - lastStallAt) / 1000 else -1)
+            .put("minBuf", minBuf)
+            .put("watched", if (watchStart > 0) (System.currentTimeMillis() - watchStart) / 1000 else 0))
     }
 
     /** Aynı kanalı baştan bağlar. 2 dakikada 4'ten fazla gerekirse arayüzün kurtarma adımlarına bırakır. */
@@ -772,6 +797,7 @@ class NativePlayer(
     private fun startExo(index: Int, startMs: Long) {
         exoTried = true
         slowed = false; player.playbackParameters = PlaybackParameters.DEFAULT
+        stallCount = 0; lastStallBuf = -1.0; lastStallAt = 0L; lastTickBuf = -1.0; minBuf = -1.0; watchStart = 0L
         vodStarted = false
         val items = (0 until vodItems.length()).map { i ->
             val o = vodItems.getJSONObject(i)
