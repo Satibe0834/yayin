@@ -59,17 +59,17 @@ class VlcVod(
 
     // ---------------- Görünüm ----------------
 
-    private val container = FrameLayout(activity).apply { setBackgroundColor(Color.BLACK) }
+    private val container: FrameLayout = FrameLayout(activity).apply { setBackgroundColor(Color.BLACK) }
     private val videoLayout = VLCVideoLayout(activity)
-    private val spinner = ProgressBar(activity).apply { isIndeterminate = true }
-    private val titleText = TextView(activity).apply {
+    private val spinner: ProgressBar = ProgressBar(activity).apply { isIndeterminate = true }
+    private val titleText: TextView = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); paint.isFakeBoldText = true
     }
-    private val subText = TextView(activity).apply {
+    private val subText: TextView = TextView(activity).apply {
         setTextColor(Color.argb(190, 255, 255, 255)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
     }
     private var dragging = false
-    private val bar = SeekBar(activity).apply {
+    private val bar: SeekBar = SeekBar(activity).apply {
         max = 1000; progress = 0
         isFocusable = false
         setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -84,28 +84,28 @@ class VlcVod(
             }
         })
     }
-    private val timeText = TextView(activity).apply {
+    private val timeText: TextView = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
     }
-    private val hintText = TextView(activity).apply {
+    private val hintText: TextView = TextView(activity).apply {
         setTextColor(Color.argb(160, 255, 255, 255)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         text = "OK: duraklat  ·  ◀ ▶: 10 sn  ·  ▲: ses dili  ·  ▼: altyazı  ·  CH +/-: bölüm"
     }
     // Teşhis satırı: indirme hızı, atlanan kare, takılma sayısı
-    private val statText = TextView(activity).apply {
+    private val statText: TextView = TextView(activity).apply {
         setTextColor(Color.argb(200, 255, 220, 120)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
     }
-    private val stateText = TextView(activity).apply {
+    private val stateText: TextView = TextView(activity).apply {
         setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); paint.isFakeBoldText = true
     }
-    private fun touchBtn(label: String, onTap: () -> Unit) = TextView(activity).apply {
+    private fun touchBtn(label: String, onTap: () -> Unit): TextView = TextView(activity).apply {
         text = label; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
         gravity = Gravity.CENTER; setPadding(dp(14), dp(8), dp(14), dp(8))
         background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(Color.argb(110, 255, 255, 255)) }
         isFocusable = false
         setOnClickListener { onTap(); showOverlay() }
     }
-    private val touchRow = LinearLayout(activity).apply {
+    private val touchRow: LinearLayout = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
         val lp = { LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { setMargins(dp(5), 0, dp(5), 0) } }
@@ -117,14 +117,14 @@ class VlcVod(
         addView(touchBtn("🔊") { cycleAudio() }, lp())
         addView(touchBtn("💬") { cycleSub() }, lp())
     }
-    private val closeBtn = TextView(activity).apply {
+    private val closeBtn: TextView = TextView(activity).apply {
         text = "✕"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         gravity = Gravity.CENTER; isFocusable = false
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(120, 0, 0, 0)) }
         setOnClickListener { cb.onVlcClose() }
     }
 
-    private val overlay = LinearLayout(activity).apply {
+    private val overlay: LinearLayout = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(32), dp(48), dp(32), dp(22))
         background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(Color.argb(230, 0, 0, 0), Color.TRANSPARENT))
@@ -164,8 +164,8 @@ class VlcVod(
         root.addView(container, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
     }
 
-    private val hideOverlay = Runnable { if (mp?.isPlaying == true && !dragging) { overlay.visibility = View.GONE; closeBtn.visibility = View.GONE } }
-    private val tick = object : Runnable {
+    private val hideOverlay: Runnable = Runnable { if (mp?.isPlaying == true && !dragging) { overlay.visibility = View.GONE; closeBtn.visibility = View.GONE } }
+    private val tick: Runnable = object : Runnable {
         override fun run() {
             if (released) return
             paintTime()
@@ -286,7 +286,7 @@ class VlcVod(
             ", süre " + (if (len > 0) fmt(len) else "bilinmiyor") + ", görüntü " + (if (sawVout) "var" else "yok")
     }
 
-    private val startTimeout = Runnable {
+    private val startTimeout: Runnable = Runnable {
         if (!started && !released) cb.onVlcError("35 sn içinde başlamadı (" + stateText() + ")")
     }
 
