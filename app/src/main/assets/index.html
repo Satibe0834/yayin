@@ -2066,7 +2066,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
       ls.sort((a,b) => (lorder[a.category_id] ?? 999) - (lorder[b.category_id] ?? 999) || (+a.num||0) - (+b.num||0));
       let n = 0;
       const live = ls.map(x => ({ kind:'live', url:xLive(x.stream_id), name:x.name || 'Adsız', logo:x.stream_icon || '', group:lcm[x.category_id] || 'Diğer',
-        xid:x.stream_id, arch: String(x.tv_archive) === '1', archDays: +x.tv_archive_duration || 0, num: ++n }));
+        xid:x.stream_id, eid:x.epg_channel_id || '', arch: String(x.tv_archive) === '1', archDays: +x.tv_archive_duration || 0, num: ++n }));
       let m = 0;
       const movies = vs.map(x => ({ kind:'movie', url:xMovie(x.stream_id, x.container_extension), name:x.name || 'Adsız', logo:x.stream_icon || '',
         group:vcm[x.category_id] || 'Diğer', xid:x.stream_id, rating: parseFloat(x.rating) || (parseFloat(x.rating_5based)*2) || 0, added: +x.added || 0, num: ++m }));
@@ -3749,6 +3749,8 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     return hit ? hit[0] : 'foot';
   }
   // Tekrar / banttan yayın işaretleri (başlık ya da açıklamada)
+  // Açıklamada yalnızca açık tekrar işaretleri ("(T)", "tekrar yayın", "Wiederholung vom") sayılır
+  const REPLAY_DESC = /(^|\s)\((t|r|w)\)|tekrar yay[ıi]n|banttan yay[ıi]n|wiederholung vom|\breplay of\b/i;
   const REPLAY = /(\btekrar[ıi]?\b|banttan|\(t\)|\(r\)|wiederholung|\bwdh\.?|replay|re-?run|rediffusion|differita|повтор)/i;
   // Başlıkta tarih (15.10.2026 / 15/10/2026) bugün ya da yarın değilse eski/tekrar maçtır
   function staleDate(text){
@@ -3791,12 +3793,20 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (NOT_MATCH.test(t)) return null;
     let league = '', name = t;
     const m = t.match(/^([^:|]{3,40})[:|]\s*(.+)$/); if (m && MATCH_SEP.test(m[2])){ league = m[1].trim(); name = m[2].trim(); }
-    const parts = name.split(MATCH_SEP); if (parts.length < 2) return null;
+    let parts = name.split(MATCH_SEP);
+    // "Galatasaray-Kasımpaşa" gibi boşluksuz yazım (tek tire, iki yanında da en az 3 harf; "Saint-Étienne" gibi adlar hariç)
+    if (parts.length < 2){
+      const u = name.match(/^(.{3,40}?)\s*[-–—]\s*(.{3,40})$/);
+      if (!u || /[-–—]/.test(u[2]) || /\b(saint|st|san|sankt|santa)$/i.test(u[1].trim()) || /^(étienne|etienne|germain|pauli|gallen|truidense)/i.test(u[2].trim())) return null;
+      parts = [u[1], u[2]];
+    }
     const a = parts[0].trim(), b = parts.slice(1).join(' - ').trim();
     if (a.length < 2 || b.length < 2 || !/\p{L}/u.test(a) || !/\p{L}/u.test(b) || a.split(/\s+/).length > 4 || b.replace(/\([^)]*\)/g, '').trim().split(/\s+/).length > 5) return null;
     // Program adları ("Tuning TV - Classics", "… - Mehr Power aus dem Pott") maç değildir
     const NOT_TEAM = /\b(tv|show|podcast|classics?|tuning|magazin|magazine|doku|dokumentation|reportage|talk|news|motor|auto|quiz|spezial|special|folge|episode|bölüm|aus|dem|mit|für|und|the|and|with|from|mehr|von)\b/i;
     if (NOT_TEAM.test(a) || NOT_TEAM.test(b.replace(/\([^)]*\)/g, ''))) return null;
+    // Görünen ad: "Galatasaray-Kasımpaşa" → "Galatasaray - Kasımpaşa", sondaki "(Canlı)" atılır
+    name = (parts[0].trim() + ' - ' + parts.slice(1).join(' - ').trim()).replace(/\s*[\(\[](canl[ıi]|live|c|direct|en vivo)[\)\]]\s*$/i, '');
     return { league, name };
   }
   const myTeams = () => cfg.myTeams.split(',').map(x => nrm(x.trim())).filter(x => x.length > 1);
@@ -3807,8 +3817,19 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const S = mScan[cc] || (mScan[cc] = {});
     if (!force && S.data && Date.now() - S.at < 30 * 60e3) return Promise.resolve(S.data);
     if (S.loading) return S.loading;
-    const chans = (sportsByCountry().get(cc) || []).slice()
-      .sort((a, b) => (favs.has(favKey(b)) ? 1 : 0) - (favs.has(favKey(a)) ? 1 : 0)).slice(0, light ? 40 : 80);
+    // Aynı kanalın kopyalarını (HD/FHD/4K/HEVC/yedek) tek kanal say: hepsi aynı yayın akışını taşır
+    const dupKey = c => c.eid ? 'e:' + c.eid.toLowerCase() : 'n:' + nrm(c.name)
+      .replace(/^\s*[a-z]{2,3}\s*[:|]\s*/i, '')
+      .replace(/\b(uhd|fhd|hd|sd|4k|8k|hevc|h\.?265|raw|backup|yedek|alt|50 ?fps|60 ?fps|1080p?|720p?|2160p?|vip|plus|\+)\b/gi, '')
+      .replace(/[^\p{L}\p{N}]/gu, '');
+    let mpool = (sportsByCountry().get(cc) || []).slice();
+    // Kendi ülkende favori genel kanallar da taransın (milli maç TRT 1'de, Avrupa kupası TV8'de olabilir)
+    if (cc === homeCountry()) channels.forEach(c => { if (c.kind === 'live' && favs.has(favKey(c)) && !mpool.includes(c) && allowed('live', c.group)) mpool.push(c); });
+    const groups = new Map();
+    mpool.sort((a, b) => (favs.has(favKey(b)) ? 1 : 0) - (favs.has(favKey(a)) ? 1 : 0))
+      .forEach(c => { const k = dupKey(c); (groups.get(k) || groups.set(k, []).get(k)).push(c); });
+    const chans = [...groups.values()].map(g => g[0]).slice(0, light ? 80 : 220);
+    const alts = new Map([...groups.values()].map(g => [g[0], g.slice(0, 5)]));
     const map = new Map(), now = nowSec(), d = new Date(); d.setHours(0,0,0,0); const until = d.getTime()/1000 + 2*86400;
     let i = 0, done = 0;
     const work = async () => {
@@ -3820,20 +3841,28 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
           epgCache.set(c.xid, { list, at:Date.now() });
           for (const pr of list){
             if (pr.end <= now || pr.start >= until) continue;
-            // Maç olamayacak kadar uzun/kısa programlar (gün boyu aynı başlık, kısa haber) ve tekrarlar dahil edilmez
-            const dur = pr.end - pr.start; if (dur > 4.5 * 3600 || dur < 20 * 60) continue;
-            if (REPLAY.test(pr.title) || REPLAY.test(pr.desc || '') || staleDate(pr.title) || staleDate(pr.desc)) continue;
-            const pm = parseMatch(pr.title); if (!pm) continue;
+            // Gün boyu aynı başlıkla duran programlar ve çok kısa kuşaklar maç değildir; başlıkta tekrar işareti olanlar atlanır
+            const dur = pr.end - pr.start; if (dur > 6 * 3600 || dur < 15 * 60) continue;
+            if (REPLAY.test(pr.title) || REPLAY_DESC.test(pr.desc || '') || staleDate(pr.title)) continue;
+            let pm = parseMatch(pr.title);
+            // Başlıkta sadece lig adı varsa ("Trendyol Süper Lig") takımlar açıklamadadır
+            if (!pm && pr.desc){
+              const line = pr.desc.split(/[\n\r]|\. /)[0].slice(0, 90);
+              const dm = parseMatch(line);
+              if (dm){ pm = dm; if (!pm.league && pr.title.length <= 45) pm.league = cleanMatchTitle(pr.title); }
+            }
+            if (!pm) continue;
             const key = nrm(pm.name).replace(/[^\p{L}\p{N}]/gu, '') + ':' + Math.round(pr.start / 900);
             const ex = map.get(key);
-            if (ex){ if (!ex.chans.includes(c)) ex.chans.push(c); }
-            else map.set(key, { key, ...pm, desc:(pr.desc || '').slice(0, 200), cc, start:pr.start, end:pr.end, chans:[c] });
+            const cs = alts.get(c) || [c];
+            if (ex){ cs.forEach(x => { if (!ex.chans.includes(x)) ex.chans.push(x); }); }
+            else map.set(key, { key, ...pm, desc:(pr.desc || '').slice(0, 200), cc, start:pr.start, end:pr.end, chans:cs.slice() });
           }
         } catch {}
         onStep?.(++done, chans.length);
       }
     };
-    S.loading = Promise.all(Array.from({ length:light ? 3 : 5 }, work)).then(() => {
+    S.loading = Promise.all(Array.from({ length:light ? 3 : 6 }, work)).then(() => {
       S.data = [...map.values()].sort((a, b) => a.start - b.start); S.data.forEach(m => m.sport = sportOf(m)); S.at = Date.now(); S.loading = null;
       if (cfg.teamAuto) S.data.filter(m => isMine(m) && m.start > nowSec() && !reminders.some(r => r.key === m.key)).forEach(m => addReminder(m, true));
       return S.data;
@@ -3921,7 +3950,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const data = mSport === 'all' ? all : all.filter(m => (m.sport || 'foot') === mSport);
     const sbar = cnt.size > 1 ? `<div class="sbar">` + `<button class="btn" data-sport="all" aria-pressed="${mSport === 'all'}">🌐 ${tx('Tümü')} <small>${[...cnt.values()].reduce((a, b) => a + b, 0)}</small></button>`
       + SPORTS.filter(x => cnt.has(x[0])).map(x => `<button class="btn" data-sport="${x[0]}" aria-pressed="${mSport === x[0]}">${x[1]} ${tx(x[2])} <small>${cnt.get(x[0])}</small></button>`).join('') + `</div>` : '';
-    const secs = [['Şimdi canlı', m => m.start <= t && m.end > t && t - m.start < 3.5 * 3600], ['Bugün', m => m.start > t && m.start < endToday], ['Yarın', m => m.start >= endToday]];
+    const secs = [['Şimdi canlı', m => m.start <= t && m.end > t && t - m.start < 5 * 3600], ['Bugün', m => m.start > t && m.start < endToday], ['Yarın', m => m.start >= endToday]];
     const sortMine = l => l.sort((a, b) => (isMine(b) ? 1 : 0) - (isMine(a) ? 1 : 0) || a.start - b.start);
     const live = data.filter(secs[0][1]);
     $('mMulti').classList.toggle('hidden', live.length < 2);
