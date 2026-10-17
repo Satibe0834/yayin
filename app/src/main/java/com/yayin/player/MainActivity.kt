@@ -466,6 +466,25 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) { "" }
         }
 
+        // ---- Maç Merkezi: resmi maç programı (arka planda indir, sonucu JS'e geri ver) ----
+        @JavascriptInterface fun httpGetAsync(id: String, url: String) {
+            if (!url.startsWith("https://site.api.espn.com/")) { httpCb(id, false, ""); return }
+            Thread {
+                val body = try {
+                    val c = okhttp3.OkHttpClient.Builder().connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
+                    c.newCall(okhttp3.Request.Builder().url(url).header("Accept", "application/json").build()).execute().use { r ->
+                        if (!r.isSuccessful) null else (r.body?.string() ?: "").take(3_000_000)
+                    }
+                } catch (_: Exception) { null }
+                httpCb(id, body != null, body ?: "")
+            }.start()
+        }
+        private fun httpCb(id: String, ok: Boolean, body: String) {
+            val js = "window.yayinHttp&&window.yayinHttp(${org.json.JSONObject.quote(id)},$ok,${org.json.JSONObject.quote(body)})"
+            runOnUiThread { web.evaluateJavascript(js, null) }
+        }
+
         // ---- Telefon kumandası ----
         @JavascriptInterface fun phoneStart(): String = phone.start()
         @JavascriptInterface fun phoneStop() { phone.stop() }
