@@ -474,7 +474,7 @@ class NativePlayer(
     fun playLive(url: String) {
         triedAsHls = false
         if (mode == Mode.VOD) closeVod(notify = false)
-        if (liveEngine == "vlc" && !seamless && !vlcLiveBroken && playLiveVlc(url)) return
+        if (liveEngine == "vlc" && !seamless && !vlcLiveBroken && url !in vlcLiveFailed && playLiveVlc(url)) return
         if (liveVlcOn) stopLiveVlc()
         if (mode == Mode.LIVE && ts != null && tsUrl == url) {
             view.visibility = View.VISIBLE
@@ -639,12 +639,12 @@ class NativePlayer(
             val u = vlcLive?.url ?: return
             val now = android.os.SystemClock.elapsedRealtime()
             while (liveVlcReconnects.isNotEmpty() && now - liveVlcReconnects.first() > 120_000) liveVlcReconnects.removeFirst()
-            if (liveVlcReconnects.size >= 4) { emit("error", JSONObject().put("code", "VLC_ENDED")); return }
+            if (liveVlcReconnects.size >= 4) { vlcFallback(u); return }
             liveVlcReconnects.addLast(now)
             emit("buffering")
             vlcLive?.play(u, liveUa(), lastVolume, YayinRenderers.audioOffsetUs)
         }
-        override fun onLiveError() { if (liveVlcOn) emit("error", JSONObject().put("code", "VLC_ERROR")) }
+        override fun onLiveError() { val u = vlcLive?.url; if (liveVlcOn && u != null) vlcFallback(u) }
         override fun onLiveInfo(w: Int, h: Int, fps: Double, codec: String) {
             if (!liveVlcOn) return
             val o = JSONObject().put("w", w).put("h", h).put("engine", "VLC")
@@ -655,6 +655,15 @@ class NativePlayer(
     }
 
     private fun liveUa() = if (userAgent != defaultUserAgent) userAgent else ""
+
+    // VLC bu kanalı açamadıysa hata gösterme: kanalı ExoPlayer ile aç ve bu oturumda o kanal için VLC'yi deneme
+    private val vlcLiveFailed = HashSet<String>()
+    private fun vlcFallback(url: String) {
+        vlcLiveFailed.add(url)
+        stopLiveVlc()
+        mode = Mode.NONE
+        main.post { playLive(url) }
+    }
 
     /** VLC ile aç. Motor yüklenemezse false döner (ExoPlayer kullanılır). */
     private fun playLiveVlc(url: String): Boolean {
