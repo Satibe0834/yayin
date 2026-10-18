@@ -3653,6 +3653,17 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       return best;
     };
     let best = scroller ? pick(els.filter(el => scroller.contains(el))) : null;
+    // Listede o yönde seçilecek düğme kalmadıysa önce listeyi kaydır (düğmesiz satırlar da görünsün), uca gelince dışarı çık
+    if (!best && scroller && d[1]){
+      const room = d[1] < 0 ? scroller.scrollTop > 1 : scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 2;
+      if (room){ scroller.scrollBy({ top: d[1] * Math.round(scroller.clientHeight * 0.6) }); return true; }
+    }
+    // Seçilecek düğme ekranın çok dışındaysa, araya kalan satırlar görünsün diye önce kaydır
+    if (best && scroller && d[1]){
+      const sr = scroller.getBoundingClientRect(), q = best.getBoundingClientRect();
+      const far = d[1] < 0 ? q.top < sr.top - sr.height * 0.6 : q.bottom > sr.bottom + sr.height * 0.6;
+      if (far){ scroller.scrollBy({ top: d[1] * Math.round(scroller.clientHeight * 0.6) }); return true; }
+    }
     if (!best) best = pick(els);
     if (best){ best.focus({ preventScroll:true }); best.scrollIntoView({ block:'nearest', inline:'nearest' }); }
     return true;
