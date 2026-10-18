@@ -2436,7 +2436,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   const rRows = new Map(); let rView = null, rCur = '';
   function rowHTML(i){
       const c = view[i], on = favs.has(favKey(c));
-      return `<div class="ch${current && current.url===c.url?' active':''}${i === cursorI && cursorOn() && lz === 'chans' ? ' cur' : ''}${isBad(c.url) ? ' bad' : ''}" style="top:${i*ROW}px" data-i="${i}">
+      return `<div class="ch${isPlayingCh(c)?' active':''}${i === cursorI && cursorOn() && lz === 'chans' ? ' cur' : ''}${isBad(c.url) ? ' bad' : ''}" style="top:${i*ROW}px" data-i="${i}">
         <span class="num">${c.num}</span><span class="lg">${logoHTML(c)}</span>
         <span class="meta"><div class="nm">${esc(c.name)}</div>${rowSub(c)}</span>
         <button class="star${on?' on':''}" data-star="${i}" aria-label="${on?'Favorilerden çıkar':'Favorilere ekle'}">${on?'★':'☆'}</button></div>`;
@@ -3422,7 +3422,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
         e.preventDefault(); clearTimeout(catT);
         const id = liveCats[+a.dataset.c].id; if (id !== liveCat) selectLiveCat(id);
         lz = 'chans'; a.blur();
-        const ci = view.findIndex(x => current && x.url === current.url); cursorI = ci >= 0 ? ci : 0;
+        const ci = view.findIndex(x => isPlayingCh(x)); cursorI = ci >= 0 ? ci : 0;
         ensureCursor(); renderRows(true); updateEpgPanel(); return true;
       }
       return false;
@@ -3436,7 +3436,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (k === 'ArrowLeft'){ e.preventDefault(); lz = 'cats'; renderRows(true); const b = $('clist').querySelector('[aria-current="true"]'); b?.focus(); b?.scrollIntoView({ block:'nearest' }); return true; }
     if (k === 'Enter' && !(a && a.matches && a.matches('button'))){
       e.preventDefault(); const c = view[cursorI]; if (!c) return true;
-      if (current && current.url === c.url) $('player').classList.add('nosidebar'); else play(c);
+      if (isPlayingCh(c)) $('player').classList.add('nosidebar'); else play(c);
       updateEpgPanel(); return true;
     }
     return false;
@@ -4141,6 +4141,12 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     try { localStorage.setItem('yayin:smart', JSON.stringify(smartPref)); } catch {}
     toast(`🔁 ${tx('Daha akıcı kopyaya geçildi')}: ${alt.name}`);
     play(alt, 0, true);
+  }
+  // Listede bu satır şu an oynayan kanal mı? (akıllı kanal aynı kanalın başka kopyasına geçmiş olabilir)
+  function isPlayingCh(c){
+    if (!current || !c) return false;
+    if (current.url === c.url) return true;
+    return c.kind === 'live' && current.kind === 'live' && cfg.smartCh !== false && baseKey(c) === baseKey(current) && smartPref[baseKey(c)] === current.url;
   }
   // Kanal açılırken: bu kanal için daha önce iyi bulunan kopya varsa doğrudan onu aç
   function smartPick(c){
