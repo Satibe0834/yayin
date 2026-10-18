@@ -4006,7 +4006,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     TR:{ 'basketball/nba':/s ?sport|tivibu/i, 'basketball/euroleague':/s ?sport|tivibu|tabii/i, 'tur.1':/bein/i, 'uefa.champions':/\btrt ?1\b|tabii|\btrt\b/i, 'uefa.europa':/\btv ?8\b|tabii|exxen/i, 'uefa.europa.conf':/\btv ?8\b|tabii|exxen/i,
          'uefa.nations':/\btrt\b|tabii/i, 'fifa.worldq.uefa':/\btrt\b|tabii/i, 'fifa.world':/\btrt\b|tabii/i, 'uefa.euro':/\btrt\b|tabii/i, 'uefa.euroq':/\btrt\b|tabii/i,
          'eng.1':/bein/i, 'esp.1':/s ?sport/i, 'ita.1':/s ?sport|bein/i, 'fra.1':/bein/i, 'ger.1':/s ?sport|tivibu/i, 'ned.1':/tivibu|s ?sport/i, 'por.1':/s ?sport|tivibu/i },
-    DE:{ 'basketball/euroleague':/dazn|magenta/i, 'basketball/nba':/dazn|prime/i, 'hockey/nhl':/sport ?1|magenta|dazn/i, 'football/nfl':/ran|dazn|prosieben|pro ?7/i, 'ger.1':/sky|dazn/i, 'ger.2':/sky|sport ?1/i, 'ger.dfb_pokal':/sky|\bard\b|das erste|\bzdf\b/i, 'uefa.champions':/dazn|prime|amazon/i,
+    DE:{ 'basketball/euroleague':/dazn|magenta ?sport/i, 'basketball/nba':/dazn|prime/i, 'hockey/nhl':/sport ?1\b|magenta ?sport|dazn/i, 'football/nfl':/ran|dazn|prosieben|pro ?7/i, 'ger.1':/sky|dazn/i, 'ger.2':/sky|sport ?1/i, 'ger.dfb_pokal':/sky|\bard\b|das erste|\bzdf\b/i, 'uefa.champions':/dazn|prime|amazon/i,
          'uefa.europa':/rtl|nitro|dazn/i, 'uefa.europa.conf':/rtl|nitro|dazn/i, 'uefa.nations':/\bard\b|\bzdf\b|rtl|das erste/i, 'fifa.worldq.uefa':/rtl|\bard\b|\bzdf\b/i,
          'eng.1':/sky/i, 'esp.1':/dazn/i, 'ita.1':/dazn/i, 'fra.1':/dazn/i, 'tur.1':/sport ?digital|dazn/i },
     AT:{ 'aut.1':/sky|orf|ran/i, 'ger.1':/sky|dazn/i, 'uefa.champions':/sky|servus|canal/i },
@@ -4092,11 +4092,16 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     return FXS.loading;
   }
   // Ülkenin kanalları arasında ligin bilinen yayıncısını bul (kopyalar tek sayılır)
+  // Büyük maçları yayınlayan genel (spor dışı) kanallar: yalnızca bunlar spor kanalı olmadan da tahmine girebilir
+  const FX_GENERAL = { TR:/\btrt ?1\b|\btv ?8\b|\batv\b|\bstar\b|\bshow\b/i, DE:/\bard\b|das erste|\bzdf\b|\brtl\b|nitro|prosieben|pro ?7|\bran\b|sat\.?1/i,
+    AT:/\borf\b|servus|puls/i, CH:/\bsrf\b|\brts\b|\brsi\b/i, UK:/\bbbc\b|\bitv\b|channel ?4|channel ?5/i, IT:/\brai\b/i, FR:/\btf1\b|france ?2|\bm6\b/i, ES:/\btve\b|la ?1\b/i };
   function fxGuessChans(cc, slug){
     const re = (FX_BCAST[cc] || {})[slug]; if (!re) return [];
+    const sport = new Set(sportsByCountry().get(cc) || []), gen = FX_GENERAL[cc];
     const seen = new Set(), out = [];
     channels.forEach(c => {
       if (c.kind !== 'live' || countryOf(c) !== cc || !re.test(c.name) || !allowed('live', c.group)) return;
+      if (!sport.has(c) && !(gen && gen.test(c.name))) return;      // müzik, film, çocuk kanalları tahmine girmez
       const k = nrm(c.name).replace(/\b(uhd|fhd|hd|sd|4k|hevc|h265|raw|backup|yedek)\b/g, '').replace(/[^\p{L}\p{N}]/gu, '');
       if (seen.has(k)) return; seen.add(k); out.push(c);
     });
