@@ -2323,6 +2323,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     ['search','matches','mv','profs'].forEach(id => $(id).classList.add('hidden')); auxStopAll(); $('pv').classList.add('hidden');
     $('player').classList.add('hidden'); $('home').classList.remove('hidden');
     document.title = 'PersetTV'; updateHome(); selectTile(sel);
+    try { if (upd.status === 'avail' || upd.status === 'ready') showUpdBar(); } catch {}   // açılışta upd henüz tanımlı olmayabilir
     bgLiveSync();
   }
 
@@ -5678,7 +5679,14 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   renderProfBtn();
   const afterLists = () => { applyRenames(); renderForYou(); paintKidsLeft(); if (kidsLocked()) kidsLock(); runStartup(); bgLiveSync(); tryPendingOpen(); };
   if (XT) bootXtream().then(afterLists); else afterLists();
-  if (canUpdate() && cfg.autoUpdate && Date.now() - store.get('updCheck', 0) > 6 * 3600e3) setTimeout(() => checkUpdate(false), 6000);
+  // Otomatik güncelleme: her açılışta, açıkken her 2 saatte bir ve uygulamaya geri dönülünce (en fazla 30 dk'da bir)
+  if (canUpdate() && cfg.autoUpdate !== false){
+    setTimeout(() => checkUpdate(false), 6000);
+    setInterval(() => { if (upd.status !== 'dl' && upd.status !== 'install') checkUpdate(false); }, 2 * 3600e3);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && Date.now() - store.get('updCheck', 0) > 30 * 60e3 && upd.status !== 'dl') checkUpdate(false);
+    });
+  }
   if (profiles.length > 1 && cfg.askProfile && !hashP) showProfiles();
   else if (!XT && !channels.length) setTimeout(openSource, 400);
 })();
