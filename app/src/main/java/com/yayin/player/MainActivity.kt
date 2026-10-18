@@ -180,6 +180,8 @@ class MainActivity : ComponentActivity() {
             setGeolocationEnabled(true)
             useWideViewPort = true
             loadWithOverviewMode = true
+            // Telefonun "büyük yazı" ayarı uygulamanın düzenini bozmasın: boyutları uygulama kendisi ayarlar
+            textZoom = 100
             userAgentString = "$userAgentString YayinApp/${BuildConfig.VERSION_NAME}"
         }
 

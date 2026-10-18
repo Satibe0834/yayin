@@ -741,6 +741,19 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 .set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
 .set-row small{display:block;color:var(--muted);font-size:12px}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* Alçak, yatay ekranlar (telefon yatay): her şey bir ekrana sığsın */
+@media (max-height:520px) and (orientation:landscape){
+  .tiles{padding:1vh 2vw;gap:1.6vw}
+  .tile{aspect-ratio:auto;height:min(54vh,240px);max-width:260px;border-radius:16px}
+  .tile svg{width:30px;height:30px}
+  .mlogo{height:60px;margin:-6px 0 -6px -4px}
+  .brand,.top{padding-top:6px;padding-bottom:4px}
+  .pill,.hbtn{transform:scale(.88);transform-origin:center}
+  .mrow{padding:8px 10px}.mt{font-size:15px}
+  .ch{font-size:14px}
+  #vol{display:none}
+  .ctrls button{height:36px;min-width:36px;padding:0 8px}
+}
 </style>
 </head>
 <body>
