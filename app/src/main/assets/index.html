@@ -1313,6 +1313,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   // Daha önce elle User-Agent yazılmışsa o korunur
   if (cfg.ua && !store.get('cfg', {}).uaPreset) cfg.uaPreset = 'custom';
+  if (cfg.uaPreset === 'app') cfg.uaPreset = 'perset';
   // Sunucuya gönderilen oynatıcı kimliği. Bazı paneller tanıdıkları uygulamalara yayını kesintisiz gönderiyor.
   const UA_PRESETS = { xciptv:'XCIPTV-v7.0-2000', perset:'PersetPlayer/1.0', vlc:'VLC/3.0.20 LibVLC/3.0.20', app:'' };
   const effUa = () => cfg.uaPreset === 'custom' ? (cfg.ua || '') : (UA_PRESETS[cfg.uaPreset] ?? UA_PRESETS.xciptv);
@@ -2404,22 +2405,39 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   function renderRows(force){
     if (!view.length){
       inner.innerHTML = `<div class="empty-list">${tab === 'fav' ? 'Favoriniz yok. Bir içeriğin yanındaki yıldıza dokunarak ekleyin.' : query ? 'Aramanızla eşleşen içerik yok.' : 'Bu bölümde içerik yok.'}</div>`;
-      lastRange = ''; return;
+      lastRange = ''; rRows.clear(); return;
     }
     const top = list.scrollTop, h = list.clientHeight || 600;
-    const start = Math.max(0, Math.floor(top/ROW) - 6), end = Math.min(view.length, Math.ceil((top+h)/ROW) + 6);
+    const start = Math.max(0, Math.floor(top/ROW) - 8), end = Math.min(view.length, Math.ceil((top+h)/ROW) + 8);
     const range = start+':'+end+':'+(current?current.url:'');
-    if (!force && range === lastRange) return; lastRange = range;
+    if (!force && range === lastRange) return;
+    const cur = current ? current.url : '';
+    // Kaydırırken yalnızca ekrana giren satırları ekle, çıkanları kaldır (logolar baştan yüklenmez, Fire TV'de akıcı)
+    if (!force && lastRange && rView === view && rCur === cur){
+      lastRange = range;
+      for (const [i, el] of rRows) if (i < start || i >= end){ el.remove(); rRows.delete(i); }
+      const add = []; for (let i = start; i < end; i++) if (!rRows.has(i)) add.push(i);
+      if (add.length){
+        const tmp = document.createElement('div'); tmp.innerHTML = add.map(rowHTML).join('');
+        [...tmp.children].forEach(el => { rRows.set(+el.dataset.i, el); inner.appendChild(el); });
+        requestEpg(add.map(i => view[i]));
+      }
+      return;
+    }
+    lastRange = range; rView = view; rCur = cur;
     let html = '';
-    for (let i = start; i < end; i++){
+    for (let i = start; i < end; i++) html += rowHTML(i);
+    inner.innerHTML = html;
+    rRows.clear(); [...inner.children].forEach(el => rRows.set(+el.dataset.i, el));
+    requestEpg(view.slice(start, end));
+  }
+  const rRows = new Map(); let rView = null, rCur = '';
+  function rowHTML(i){
       const c = view[i], on = favs.has(favKey(c));
-      html += `<div class="ch${current && current.url===c.url?' active':''}${i === cursorI && cursorOn() && lz === 'chans' ? ' cur' : ''}${isBad(c.url) ? ' bad' : ''}" style="top:${i*ROW}px" data-i="${i}">
+      return `<div class="ch${current && current.url===c.url?' active':''}${i === cursorI && cursorOn() && lz === 'chans' ? ' cur' : ''}${isBad(c.url) ? ' bad' : ''}" style="top:${i*ROW}px" data-i="${i}">
         <span class="num">${c.num}</span><span class="lg">${logoHTML(c)}</span>
         <span class="meta"><div class="nm">${esc(c.name)}</div>${rowSub(c)}</span>
         <button class="star${on?' on':''}" data-star="${i}" aria-label="${on?'Favorilerden çıkar':'Favorilere ekle'}">${on?'★':'☆'}</button></div>`;
-    }
-    inner.innerHTML = html;
-    requestEpg(view.slice(start, end));
   }
   function rowSub(c){
     const { now } = c.kind === 'live' && cfg.epgList ? epgOf(c) : {};
@@ -3373,6 +3391,13 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     }
     if (touchOnly) return false;
     const a = document.activeElement, inCats = a && a.classList && a.classList.contains('cat-b');
+    if (inCats && (k === 'ArrowUp' || k === 'ArrowDown')){
+      const bs = $('clist').querySelectorAll('.cat-b'), i = [...bs].indexOf(a), n = bs[i + (k === 'ArrowDown' ? 1 : -1)];
+      e.preventDefault();
+      if (n){ n.focus({ preventScroll:true }); n.scrollIntoView({ block:'nearest' }); }
+      else if (k === 'ArrowUp'){ const q = $('q'); if (q && q.offsetParent) q.focus(); }
+      return true;
+    }
     const ctrlBtns = () => [...document.querySelectorAll('#player .ctrls button, #player .ctrls input')].filter(x => x.offsetParent && !x.disabled);
     if (a && a.closest && a.closest('#player .ctrls')){
       // Düğmeler arasında ◀ ▶ kendiliğinden gezinir; en soldaki düğmede ◀ kanal listesine döner
@@ -4713,7 +4738,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     { id:'net', icon:'⚡', title:'Ağ ve gelişmiş', lead:'Bağlantı testi ve servis sağlayıcıya özel ayarlar.', rows:() => [
       { type:'button', id:'speed', label:'Bağlantı testi', desc:() => lastSpeed || 'İnternet hızınızın yayınlar için yeterli olup olmadığını ölçer (yaklaşık 7 sn).', action:'Testi başlat',
         run:async (btn) => { btn.disabled = true; btn.textContent = 'Ölçülüyor…'; lastSpeed = await speedTest(); renderSettings(); } },
-      { type:'select', key:'uaPreset', label:'Oynatıcı kimliği', desc:'Uygulamanın sunucuya kendini nasıl tanıttığı. Bazı sağlayıcılar tanıdıkları uygulamalara yayını kesintisiz gönderir. Takılma olursa XCIPTV seçili kalsın.', native:true, options:[['xciptv','XCIPTV (önerilen)'],['perset','Perset Player'],['app','PersetTV (eski)'],['vlc','VLC'],['custom','Özel (aşağıya yazın)']] },
+      { type:'select', key:'uaPreset', label:'Oynatıcı kimliği', desc:'Uygulamanın sunucuya kendini nasıl tanıttığı. Bazı sağlayıcılar tanıdıkları uygulamalara yayını kesintisiz gönderir. Takılma olursa XCIPTV seçili kalsın.', native:true, options:[['xciptv','XCIPTV (önerilen)'],['perset','Perset Player'],['vlc','VLC'],['custom','Özel (aşağıya yazın)']] },
       { type:'text', key:'ua', label:'Özel User-Agent', desc:'Bazı sağlayıcılar belirli bir oynatıcı kimliği ister. Boş bırakırsanız varsayılan kullanılır.', native:true, placeholder:'Örn. VLC/3.0.20 LibVLC/3.0.20' },
     ]},
     { id:'update', icon:'⬆', title:'Güncelleme', lead:'Yeni sürümler uygulamayı silmeden, ayarlarınız ve listeniz korunarak kurulur.', rows:() => [
