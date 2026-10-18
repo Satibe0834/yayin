@@ -4275,20 +4275,26 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     const live = L.filter(m => m.start <= t && m.end > t).length, today = L.filter(m => m.end > t && m.start < end).length;
     el.textContent = live ? `${live} maç canlı` : today ? `Bugün ${today} maç` : 'Bugün maç yok';
   }
-  function renderMCats(){
+  function renderMCats(){ $('mcats').innerHTML = mCatsHTML(); }
+  function mCatsHTML(){
     const m = sportsByCountry(), home = homeCountry();
     const list = [...m.keys()].sort((a, b) => (a === home ? -1 : b === home ? 1 : 0) || (a === 'OT') - (b === 'OT') || m.get(b).length - m.get(a).length);
     const t0 = nowSec(), seen = new Set();
     const cnt = cc => mergedFor(cc).filter(x => x.end > t0);
     Object.keys(mScan).forEach(cc => { if (mScan[cc].data) cnt(cc).forEach(x => seen.add(x.official ? x.key.replace(/:[A-Z]+$/, '') : x.key)); });
     const btn = (cc, flag, name, n, busy) => `<button class="cat-b" data-cc="${cc}" aria-current="${cc === mSel}"><span><i class="fl" style="font-style:normal">${flag}</i> ${esc(name)}</span><span class="n">${busy ? '…' : n}</span></button>`;
-    $('mcats').innerHTML = btn('ALL', '🌐', 'Tümü', seen.size || '', false)
+    return btn('ALL', '🌐', 'Tümü', seen.size || '', false)
       + list.map(cc => { const k = CNAME[cc], S = mScan[cc]; return btn(cc, k ? k[2] : '🏳️', k ? k[1] : 'Diğer', S && S.data ? cnt(cc).length : '', S && S.loading); }).join('');
   }
   function renderMCatsKeep(){
+    // Düğmeleri yeniden oluşturmadan yalnızca sayıları güncelle (gezinirken takılmasın)
+    const box = $('mcats'), tmp = document.createElement('div');
     const a = document.activeElement, cc = a && a.closest && a.closest('#mcats') ? a.dataset.cc : null;
-    renderMCats();
-    if (cc) $('mcats').querySelector(`[data-cc="${cc}"]`)?.focus();
+    const fresh = mCatsHTML();
+    tmp.innerHTML = fresh;
+    const nb = [...tmp.querySelectorAll('.cat-b')], ob = [...box.querySelectorAll('.cat-b')];
+    if (nb.length !== ob.length || nb.some((b, i) => b.dataset.cc !== ob[i].dataset.cc)){ box.innerHTML = fresh; if (cc) box.querySelector(`[data-cc="${cc}"]`)?.focus(); return; }
+    nb.forEach((b, i) => { const o = ob[i].querySelector('.n'), n = b.querySelector('.n'); if (o && n && o.textContent !== n.textContent) o.textContent = n.textContent; });
   }
   // Bütün ülkeleri arka planda sırayla tara: "Tümü" ve ülke sayıları her zaman güncel kalsın
   let mBgScan = false;
@@ -4395,7 +4401,51 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (v == null) return; cfg.myTeams = v.trim(); saveCfg(); const data = mData(); if (data && cfg.teamAuto) data.filter(m => isMine(m) && m.start > nowSec() && !reminders.some(r => r.key === m.key)).forEach(m => addReminder(m, true)); renderMatches();
   };
   $('mMulti').onclick = () => { const t = nowSec(); openMultiview((mData() || []).filter(m => m.start <= t && m.end > t).slice(0, 2).map(m => m.chans.find(x => !isBad(x.url)) || m.chans[0])); };
-  function matchesKey(e){ if (backKey(e)){ e.preventDefault(); showHome(); return; } spatialNav(e, $('matches')); }
+  // Maç Merkezi'nde hızlı gezinme: yüzlerce düğmeyi ölçmek yerine doğrudan komşuya geç
+  function matchesKey(e){
+    if (backKey(e)){ e.preventDefault(); showHome(); return; }
+    const k = e.key, a = document.activeElement;
+    if (!/^Arrow/.test(k) || !a) return spatialNav(e, $('matches'));
+    const inCats = a.closest && a.closest('#mcats'), inBody = a.closest && a.closest('#mBody');
+    if (inCats){
+      const bs = [...$('mcats').querySelectorAll('.cat-b')], i = bs.indexOf(a);
+      if (k === 'ArrowUp' || k === 'ArrowDown'){
+        e.preventDefault();
+        const n = bs[i + (k === 'ArrowDown' ? 1 : -1)];
+        if (n){ n.focus({ preventScroll:true }); n.scrollIntoView({ block:'nearest' }); }
+        else if (k === 'ArrowUp') spatialNav(e, $('matches'));     // en üstte: üstteki düğmelere
+        return;
+      }
+      if (k === 'ArrowRight'){ e.preventDefault(); const b = mBodyBtns()[0]; if (b){ b.focus({ preventScroll:true }); $('mBody').scrollTop = 0; } return; }
+      return spatialNav(e, $('matches'));
+    }
+    if (inBody){
+      const bs = mBodyBtns(), i = bs.indexOf(a), r = a.getBoundingClientRect();
+      e.preventDefault();
+      if (k === 'ArrowLeft' || k === 'ArrowRight'){
+        const n = bs[i + (k === 'ArrowRight' ? 1 : -1)];
+        if (n && Math.abs(n.getBoundingClientRect().top - r.top) < 8){ n.focus({ preventScroll:true }); return; }   // aynı satırda (spor çubuğu)
+        if (k === 'ArrowLeft'){ const c = $('mcats').querySelector('[aria-current="true"]') || $('mcats').querySelector('.cat-b'); c && c.focus(); }
+        return;
+      }
+      // ▲▼: önceki/sonraki satırdaki ilk düğme; çok uzaksa önce listeyi kaydır
+      const down = k === 'ArrowDown', sc = $('mBody'), sr = sc.getBoundingClientRect();
+      let n = null;
+      if (down){ for (let j = i + 1; j < bs.length; j++){ if (bs[j].getBoundingClientRect().top > r.top + 8){ n = bs[j]; break; } } }
+      else { for (let j = i - 1; j >= 0; j--){ const t = bs[j].getBoundingClientRect().top; if (t < r.top - 8){ n = bs[j]; const t2 = t; for (let q = j - 1; q >= 0 && Math.abs(bs[q].getBoundingClientRect().top - t2) < 8; q--) n = bs[q]; break; } } }
+      const step = Math.round(sc.clientHeight * 0.6);
+      if (n){
+        const q = n.getBoundingClientRect();
+        if (down ? q.bottom > sr.bottom + sr.height * 0.6 : q.top < sr.top - sr.height * 0.6){ sc.scrollBy({ top: down ? step : -step }); return; }
+        n.focus({ preventScroll:true }); n.scrollIntoView({ block:'nearest' }); return;
+      }
+      if (down ? sc.scrollTop + sc.clientHeight < sc.scrollHeight - 2 : sc.scrollTop > 1){ sc.scrollBy({ top: down ? step : -step }); return; }
+      if (!down){ const t = $('matches').querySelector('.mtop button, #mMulti, header button'); if (t && t.offsetParent) t.focus(); else spatialNav(e, $('matches')); }
+      return;
+    }
+    spatialNav(e, $('matches'));
+  }
+  const mBodyBtns = () => [...$('mBody').querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null);
 
   // ---- Hatırlatıcılar ----
   function addReminder(m, silent){

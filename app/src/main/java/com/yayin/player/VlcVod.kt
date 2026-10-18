@@ -250,8 +250,10 @@ class VlcVod(
         val l = lib ?: LibVLC(activity, arrayListOf(
             "--network-caching=8000",      // 8 sn arabellek: yavaş sunucuda takılmayı azaltır
             "--file-caching=3000",
-            "--no-stats",
-        )).also { lib = it }
+        ).apply {
+            // Sunucuya gönderilen kimlik VLC'nin geneline verilmeli; film başına ayar dikkate alınmıyordu
+            if (ua.isNotBlank()) add("--http-user-agent=$ua")
+        }).also { lib = it }
         val p = mp ?: MediaPlayer(l).also { np ->
             mp = np
             np.attachViews(videoLayout, null, true, false)

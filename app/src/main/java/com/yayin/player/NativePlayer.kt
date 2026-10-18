@@ -920,10 +920,11 @@ class NativePlayer(
     fun setJsLandscape(on: Boolean) { jsLandscape = on; updateOrientation() }
     private fun updateOrientation() {
         if (isTvDevice) return
-        val want = if (mode == Mode.VOD || jsLandscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                   else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        // Telefonda da TV'deki gibi her zaman yatay (telefon iki yöne çevrilebilir)
+        val want = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         if (activity.requestedOrientation != want) activity.requestedOrientation = want
     }
+    init { main.post { updateOrientation() } }   // uygulama açılır açılmaz (telefonda) yatay
 
     // ---------------- Bildirim bandı (film/dizi açıkken gol bildirimi) ----------------
     private var noteView: android.widget.TextView? = null
