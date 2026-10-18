@@ -470,14 +470,21 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface fun httpGetAsync(id: String, url: String) {
             if (!url.startsWith("https://site.api.espn.com/")) { httpCb(id, false, ""); return }
             Thread {
+                var err = ""
                 val body = try {
                     val c = okhttp3.OkHttpClient.Builder().connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
-                    c.newCall(okhttp3.Request.Builder().url(url).header("Accept", "application/json").build()).execute().use { r ->
-                        if (!r.isSuccessful) null else (r.body?.string() ?: "").take(3_000_000)
+                        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS).followRedirects(true).build()
+                    // Tarayıcı gibi tanıt: bazı servisler kimliksiz istekleri reddediyor
+                    val req = okhttp3.Request.Builder().url(url)
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 11; AFTKA) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
+                        .header("Accept", "application/json, text/plain, */*")
+                        .header("Accept-Language", "en-US,en;q=0.8")
+                        .build()
+                    c.newCall(req).execute().use { r ->
+                        if (!r.isSuccessful) { err = "HTTP " + r.code; null } else (r.body?.string() ?: "").take(4_000_000)
                     }
-                } catch (_: Exception) { null }
-                httpCb(id, body != null, body ?: "")
+                } catch (e: Exception) { err = (e.javaClass.simpleName + " " + (e.message ?: "")).trim().take(80); null }
+                httpCb(id, body != null, body ?: err)
             }.start()
         }
         private fun httpCb(id: String, ok: Boolean, body: String) {

@@ -1309,14 +1309,14 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   // ---------- Ayarlar (kalıcı) ----------
   const CFG_DEFAULTS = { startup:'home', zapDelay:180, aspect:'fit', buffer:'fast', audioLang:'', subLang:'', subSize:'normal',
     ffmpeg:'on', ua:'', liveSort:'list', epgList:true, epgShift:0, logos:true, clock24:true, weather:true, tempUnit:'c',
-    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming2:false, psiFix:true, vodEngine:'vlc', liveEngine:'exo', seamless:false, uaPreset:'xciptv', matchRate:true, slideMin:10, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
+    scan:false, motion:true, adultLock:true, pinHash:'', cats:{}, tp:'off', fx:false, bgSound:false, homeLive:false, catSort:'provider', posterCols:4, homeWx:false, homeInfo:false, forYouOn:false, kidsLimit:0, checkin:true, perf:false, showTiming2:false, psiFix:true, vodEngine:'vlc', liveEngine:'exo', seamless:false, uaPreset:'perset', matchRate:true, slideMin:10, quality:'max', liveWidth:'w', tsOn:false, tsMinutes:30, phoneRemote:true, failover:true, preview:'auto', matchesAuto:true, myTeams:'', teamAuto:true, remindAuto:false, askProfile:true, mvN:4, autoUpdate:true };
   const cfg = Object.assign({}, CFG_DEFAULTS, store.get('cfg', {}));
   // Daha önce elle User-Agent yazılmışsa o korunur
   if (cfg.ua && !store.get('cfg', {}).uaPreset) cfg.uaPreset = 'custom';
   if (cfg.uaPreset === 'app') cfg.uaPreset = 'perset';
   // Sunucuya gönderilen oynatıcı kimliği. Bazı paneller tanıdıkları uygulamalara yayını kesintisiz gönderiyor.
   const UA_PRESETS = { xciptv:'XCIPTV-v7.0-2000', perset:'PersetPlayer/1.0', vlc:'VLC/3.0.20 LibVLC/3.0.20', app:'' };
-  const effUa = () => cfg.uaPreset === 'custom' ? (cfg.ua || '') : (UA_PRESETS[cfg.uaPreset] ?? UA_PRESETS.xciptv);
+  const effUa = () => cfg.uaPreset === 'custom' ? (cfg.ua || '') : (UA_PRESETS[cfg.uaPreset] ?? UA_PRESETS.perset);
   if (store.get('autoLast', false) && !store.get('cfg', null)) cfg.startup = 'last';
   const saveCfg = () => store.set('cfg', cfg);
 
@@ -3473,7 +3473,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       if (i.vbr) out.push(`<span class="qb">${(i.vbr / 1e6).toFixed(1)} Mbit/sn</span>`);
       if (i.engine) out.push(`<span class="qb">▶ ${esc(i.engine)}</span>`);
       if (i.engine === 'VLC'){
-        out.push(`<span class="qb">⏱ ${tx('Arabellek')}: 6 sn (VLC)</span>`);
         out.push(`<span class="qb" id="qbDrop">${tx('Atlanan kare')}: ${i.drop != null ? i.drop : '…'}</span>`);
         out.push(`<span class="qb" id="qbStall" style="flex-basis:100%">${stallText(i)}</span>`);
       }
@@ -4011,31 +4010,38 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   const fxDay = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const FXS = { list:null, at:0, loading:null, failed:false, leagues:0 };
   const httpWait = new Map(); let httpSeq = 0;
-  window.yayinHttp = (id, ok, body) => { const f = httpWait.get(id); if (f){ httpWait.delete(id); f(ok ? body : null); } };
+  window.yayinHttp = (id, ok, body) => { const f = httpWait.get(id); if (f){ httpWait.delete(id); f(ok ? body : null); if (!ok && body) FXS.err = body; } };
+  function fxFetch(url){
+    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 15000);
+    return fetch(url, { signal:ctl.signal, cache:'no-store' }).then(r => { clearTimeout(tm); if (!r.ok){ FXS.err = 'HTTP ' + r.status; throw new Error('http'); } return r.json(); })
+      .catch(e => { if (!FXS.err) FXS.err = String(e && e.message || e).slice(0, 80); throw e; });
+  }
   function fxGet(url){
+    // Önce uygulamanın kendi bağlantısı, olmazsa tarayıcı bileşeni
     if (NATIVE && NATIVE.httpGetAsync){
       return new Promise(res => {
         const id = 'h' + (++httpSeq); httpWait.set(id, res);
-        setTimeout(() => { if (httpWait.has(id)){ httpWait.delete(id); res(null); } }, 20000);
+        setTimeout(() => { if (httpWait.has(id)){ httpWait.delete(id); FXS.err = FXS.err || 'zaman aşımı'; res(null); } }, 25000);
         NATIVE.httpGetAsync(id, url);
-      }).then(t => { if (t == null) throw new Error('http'); return JSON.parse(t); });
+      }).then(t => { if (t == null) return fxFetch(url); try { return JSON.parse(t); } catch { FXS.err = 'JSON'; return fxFetch(url); } });
     }
-    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 12000);
-    return fetch(url, { signal:ctl.signal }).then(r => { clearTimeout(tm); if (!r.ok) throw new Error('http'); return r.json(); });
+    return fxFetch(url);
   }
   function loadFixtures(force){
     if (FXS.loading) return FXS.loading;
-    if (!force && FXS.list && Date.now() - FXS.at < 2 * 60e3) return Promise.resolve(FXS.list);
-    const d1 = new Date(Date.now() - 3 * 3600e3), d2 = new Date(Date.now() + 36 * 3600e3);
-    const range = fxDay(d1) + '-' + fxDay(d2), out = [];
-    let ok = 0;
-    const q = FX_LEAGUES.slice();
+    if (!force && FXS.list && Date.now() - FXS.at < 3 * 60e3) return Promise.resolve(FXS.list);
+    const days = [fxDay(new Date(Date.now() - 6 * 3600e3)), fxDay(new Date()), fxDay(new Date(Date.now() + 24 * 3600e3))]
+      .filter((d, i, a) => a.indexOf(d) === i);
+    const out = [], seenEv = new Set();
+    let ok = 0; FXS.err = '';
+    const q = []; FX_LEAGUES.forEach(L => days.forEach(d => q.push([...L, d])));
     const work = async () => {
       while (q.length){
-        const [slug, cc, lname] = q.shift();
+        const [slug, cc, lname, day] = q.shift();
         try {
-          const j = await fxGet(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${range}&limit=300`); ok++;
+          const j = await fxGet(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${day}`); ok++;
           (j.events || []).forEach(ev => {
+            if (seenEv.has(ev.id)) return; seenEv.add(ev.id);
             const comp = (ev.competitions || [])[0] || {}, cs = comp.competitors || [];
             const h = cs.find(c => c.homeAway === 'home') || cs[0], a = cs.find(c => c.homeAway === 'away') || cs[1];
             if (!h || !a || !h.team || !a.team) return;
@@ -4096,7 +4102,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       else { const t = nowSec(), d = mData(); if (d) $('mCount').textContent = $('mCount').textContent; }
       updateMatchTile();
     });
-    go(); fxTimer = setInterval(go, 2 * 60e3);
+    go(); fxTimer = setInterval(go, 3 * 60e3);
     if (!$('mBody').contains(document.activeElement)) setTimeout(() => renderMatches(false), 50);
   }
 
@@ -4205,7 +4211,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     });
     const unscanned = mSel === 'ALL' ? [...sportsByCountry().keys()].filter(k => !(mScan[k] && mScan[k].data)).length : 0;
     const fxs = FXS.list ? `✓ ${tx('Resmi maç programı')}: ${hm(Math.round(FXS.at / 1000))} ${tx('güncellendi')} · ${FXS.leagues} ${tx('lig')}`
-      : FXS.loading ? `⏳ ${tx('Resmi maç programı yükleniyor…')}` : FXS.failed ? `⚠ ${tx('Resmi maç programına ulaşılamadı; futbol maçları gösterilemiyor.')}` : '';
+      : FXS.loading ? `⏳ ${tx('Resmi maç programı yükleniyor…')}` : FXS.failed ? `⚠ ${tx('Resmi maç programına ulaşılamadı; futbol maçları gösterilemiyor.')}${FXS.err ? ' (' + esc(FXS.err) + ')' : ''}` : '';
     $('mBody').innerHTML = (fxs ? `<p class="hint fxs">${fxs}</p>` : '') + sbar + (h || `<p class="hint">Önümüzdeki iki gün için spor kanallarının yayın akışında maç bulunamadı. Sağlayıcınızın yayın akışı eksik olabilir.</p>`)
       + (unscanned ? `<p class="hint">Diğer ülkelerin maçlarını görmek için soldan ülke seçin.</p>` : '');
     if (focus) requestAnimationFrame(() => $('mBody').querySelector('.btn')?.focus());
@@ -4738,7 +4744,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     { id:'net', icon:'⚡', title:'Ağ ve gelişmiş', lead:'Bağlantı testi ve servis sağlayıcıya özel ayarlar.', rows:() => [
       { type:'button', id:'speed', label:'Bağlantı testi', desc:() => lastSpeed || 'İnternet hızınızın yayınlar için yeterli olup olmadığını ölçer (yaklaşık 7 sn).', action:'Testi başlat',
         run:async (btn) => { btn.disabled = true; btn.textContent = 'Ölçülüyor…'; lastSpeed = await speedTest(); renderSettings(); } },
-      { type:'select', key:'uaPreset', label:'Oynatıcı kimliği', desc:'Uygulamanın sunucuya kendini nasıl tanıttığı. Bazı sağlayıcılar tanıdıkları uygulamalara yayını kesintisiz gönderir. Takılma olursa XCIPTV seçili kalsın.', native:true, options:[['xciptv','XCIPTV (önerilen)'],['perset','Perset Player'],['vlc','VLC'],['custom','Özel (aşağıya yazın)']] },
+      { type:'select', key:'uaPreset', label:'Oynatıcı kimliği', desc:'Uygulamanın sunucuya kendini nasıl tanıttığı. Bazı sağlayıcılar tanıdıkları uygulamalara yayını kesintisiz gönderir. Takılma olursa XCIPTV seçili kalsın.', native:true, options:[['perset','Perset Player (önerilen)'],['xciptv','XCIPTV'],['vlc','VLC'],['custom','Özel (aşağıya yazın)']] },
       { type:'text', key:'ua', label:'Özel User-Agent', desc:'Bazı sağlayıcılar belirli bir oynatıcı kimliği ister. Boş bırakırsanız varsayılan kullanılır.', native:true, placeholder:'Örn. VLC/3.0.20 LibVLC/3.0.20' },
     ]},
     { id:'update', icon:'⬆', title:'Güncelleme', lead:'Yeni sürümler uygulamayı silmeden, ayarlarınız ve listeniz korunarak kurulur.', rows:() => [
