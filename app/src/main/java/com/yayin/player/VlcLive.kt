@@ -70,7 +70,8 @@ class VlcLive(
     private fun freezeFrame() {
         if (android.os.Build.VERSION.SDK_INT < 24 || !started || layout.visibility != View.VISIBLE) return
         val sv = findSurface(layout) ?: return
-        val w = sv.width / 2, h = sv.height / 2
+        val w = sv.width / 2
+        val h = sv.height / 2
         if (w < 16 || h < 16) return
         try {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
