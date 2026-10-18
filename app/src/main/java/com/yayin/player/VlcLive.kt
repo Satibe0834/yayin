@@ -3,8 +3,12 @@ package com.yayin.player
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Bitmap
+import android.view.SurfaceView
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -37,12 +41,49 @@ class VlcLive(
     var url: String? = null
         private set
 
+    // Kanal değişirken siyah ekran yerine eski kanalın son karesi (yeni görüntü gelene kadar)
+    private val still: ImageView = ImageView(activity).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        visibility = View.GONE
+    }
+    private val hideStill: Runnable = Runnable { still.visibility = View.GONE; still.setImageDrawable(null); lastStill?.recycle(); lastStill = null }
+    private var lastStill: Bitmap? = null
+
     init {
         layout.visibility = View.GONE
         root.addView(layout, 0, FrameLayout.LayoutParams(0, 0))
+        root.addView(still, 1, FrameLayout.LayoutParams(0, 0))
     }
 
-    fun setLayout(lp: FrameLayout.LayoutParams) { layout.layoutParams = lp }
+    fun setLayout(lp: FrameLayout.LayoutParams) {
+        layout.layoutParams = lp
+        still.layoutParams = FrameLayout.LayoutParams(lp.width, lp.height).apply { leftMargin = lp.leftMargin; topMargin = lp.topMargin }
+    }
+
+    private fun findSurface(v: View): SurfaceView? {
+        if (v is SurfaceView) return v
+        if (v is ViewGroup) for (i in 0 until v.childCount) findSurface(v.getChildAt(i))?.let { return it }
+        return null
+    }
+
+    /** Ekrandaki son kareyi yakala ve görüntünün üstünde göster (Android 7+) */
+    private fun freezeFrame() {
+        if (android.os.Build.VERSION.SDK_INT < 24 || !started || layout.visibility != View.VISIBLE) return
+        val sv = findSurface(layout) ?: return
+        val w = sv.width / 2, h = sv.height / 2
+        if (w < 16 || h < 16) return
+        try {
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+            android.view.PixelCopy.request(sv, bmp, { res ->
+                if (res == android.view.PixelCopy.SUCCESS && !released) {
+                    main.removeCallbacks(hideStill)
+                    lastStill?.recycle(); lastStill = bmp
+                    still.setImageBitmap(bmp); still.visibility = View.VISIBLE
+                    main.postDelayed(hideStill, 8_000)      // yeni kanal gecikirse en geç 8 sn'de kaldır
+                } else bmp.recycle()
+            }, main)
+        } catch (_: Throwable) {}
+    }
 
     private fun ensure(): MediaPlayer {
         mp?.let { return it }
@@ -62,6 +103,7 @@ class VlcLive(
     fun play(u: String, ua: String, volume: Float, audioDelayUs: Long) {
         val p = ensure()
         val l = lib ?: return
+        freezeFrame()
         url = u; started = false; buffering = true
         layout.visibility = View.VISIBLE
         val m = Media(l, Uri.parse(u))
@@ -84,6 +126,7 @@ class VlcLive(
             MediaPlayer.Event.Vout, MediaPlayer.Event.Playing, MediaPlayer.Event.TimeChanged -> {
                 if (!started && (e.type != MediaPlayer.Event.TimeChanged || e.timeChanged > 0)) {
                     started = true; buffering = false
+                    main.removeCallbacks(hideStill); main.postDelayed(hideStill, 150)   // yeni görüntü geldi: son kareyi kaldır
                     cb.onLivePlaying()
                     main.postDelayed({ sendInfo() }, 800)
                 }
@@ -115,6 +158,7 @@ class VlcLive(
         url = null; started = false
         try { mp?.stop() } catch (_: Exception) {}
         layout.visibility = View.GONE
+        main.removeCallbacks(hideStill); hideStill.run()
     }
 
     fun release() {
@@ -127,6 +171,7 @@ class VlcLive(
         try { mp?.release() } catch (_: Exception) {}
         try { lib?.release() } catch (_: Exception) {}
         mp = null; lib = null
-        root.removeView(layout)
+        root.removeView(layout); root.removeView(still)
+        lastStill?.recycle(); lastStill = null
     }
 }

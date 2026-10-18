@@ -690,6 +690,10 @@ class NativePlayer(
             val cur = disp.mode
             fun err(rate: Float): Float { val r = rate / fps; val k = Math.round(r); return if (k < 1) 99f else Math.abs(r - k) }
             if (err(cur.refreshRate) < 0.01f) return          // şu anki mod zaten uygun (ör. 25 kare → 50 Hz)
+            // Yalnızca 25/50 kare yayınlar için 50 Hz'e geç; bir kez geçtikten sonra 30/60 karelik kanallar için geri dönme.
+            // Her kanal değişiminde ekranın kararmasını önler.
+            val fifty = Math.abs(fps - 25f) < 0.6f || Math.abs(fps - 50f) < 1f
+            if (!fifty) return
             val best = disp.supportedModes
                 .filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight && err(it.refreshRate) < 0.01f }
                 .minByOrNull { Math.abs(it.refreshRate - cur.refreshRate) } ?: return
