@@ -427,7 +427,8 @@ class NativePlayer(
             val u = if (liveVlcOn) vlcLive?.url else liveReqUrl
             if (mode == Mode.LIVE && u != null) main.post { forceLive(u) }
         }
-        val newLive = o.optString("liveEngine", "exo")
+        // Canlı TV her zaman ExoPlayer: VLC kanal değişiminde siyah ekran ve ses kaybı yapıyordu (VLC filmlerde kalıyor)
+        val newLive = "exo"
         if (newLive != liveEngine) {
             liveEngine = newLive
             // Motor değiştiyse açık kanalı yeni motorla yeniden aç

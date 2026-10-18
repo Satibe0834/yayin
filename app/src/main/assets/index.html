@@ -4562,7 +4562,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   function nativeCfg(){
     if (!NATIVE) return;
     NATIVE.nativeAspect?.(cfg.aspect);
-    NATIVE.nativeConfig?.(JSON.stringify({ buffer:cfg.buffer, audioLang:cfg.audioLang, subLang:cfg.subLang, subSize:cfg.subSize, ffmpeg:cfg.ffmpeg, ua:effUa(), quality:cfg.quality, timeshift:false, psiFix:cfg.psiFix !== false, vodEngine:cfg.vodEngine || 'vlc', liveEngine:cfg.liveEngine || 'exo', seamless:!!cfg.seamless, matchRate:cfg.matchRate !== false }));
+    NATIVE.nativeConfig?.(JSON.stringify({ buffer:cfg.buffer, audioLang:cfg.audioLang, subLang:cfg.subLang, subSize:cfg.subSize, ffmpeg:cfg.ffmpeg, ua:effUa(), quality:cfg.quality, timeshift:false, psiFix:cfg.psiFix !== false, vodEngine:cfg.vodEngine || 'vlc', liveEngine:'exo', seamless:!!cfg.seamless, matchRate:cfg.matchRate !== false }));
   }
   function applyCfg(boot){
     const h = document.documentElement.classList;
@@ -4658,7 +4658,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       { type:'select', key:'quality', label:'Görüntü kalitesi', desc:'Birden fazla kalitesi olan yayınlarda her zaman en yüksek kaliteyi seçer. Kanalın gerçek çözünürlüğü bilgi panelinde yazar.', native:true, options:[['max','En yüksek (önerilen)'],['auto','Otomatik (bağlantı hızına göre)']] },
       APP && { type:'toggle', key:'matchRate', label:'Ekranı kare hızına eşle', desc:'50 kare/sn\'lik spor yayınlarında TV\'yi 50 Hz\'e geçirir; hareket tökezlemeden akar. İlk kanalda ekran bir an kararabilir.', native:true },
       APP && { type:'toggle', key:'seamless', label:'Kesintisiz mod (yayın 30 sn geriden)', desc:'Kanalları 30 saniye geriden açar; sağlayıcıdaki kısa kesintiler ekrana yansımaz. Kanal 2-3 sn\'de açılır, maçlarda gol birkaç saniye geç görünür.', native:true },
-      APP && { type:'select', key:'liveEngine', label:'Canlı TV oynatıcı', desc:'VLC, XCIPTV ile aynı motordur; ExoPlayer\'da takılan kanallarda daha akıcı oynatır. ExoPlayer kanalları daha hızlı açar.', native:true, options:[['exo','ExoPlayer (hızlı açılış)'],['vlc','VLC (akıcı oynatma)']] },
       APP && { type:'select', key:'vodEngine', label:'Film/dizi oynatıcı', desc:'VLC standart dışı dosyaları da açar. Biri açamazsa otomatik olarak diğeri denenir.', native:true, options:[['vlc','VLC (önerilen)'],['exo','ExoPlayer']] },
       { type:'select', key:'buffer', label:'Arabellek', desc:'Hızlı başlangıç kanal geçişini hızlandırır; yavaş internette "Kararlı" takılmayı azaltır.', native:true, options:[['fast','Hızlı başlangıç'],['balanced','Dengeli'],['stable','Kararlı (yavaş internet)']] },
       { type:'select', key:'audioLang', label:'Tercih edilen ses dili', desc:'Birden fazla ses dili olan film ve dizilerde.', native:true, options:[['','Otomatik'],['tr','Türkçe'],['en','İngilizce'],['de','Almanca'],['fr','Fransızca'],['ar','Arapça'],['ru','Rusça']] },
