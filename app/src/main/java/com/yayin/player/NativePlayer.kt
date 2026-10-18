@@ -925,6 +925,25 @@ class NativePlayer(
         if (activity.requestedOrientation != want) activity.requestedOrientation = want
     }
 
+    // ---------------- Bildirim bandı (film/dizi açıkken gol bildirimi) ----------------
+    private var noteView: android.widget.TextView? = null
+    private val hideNote = Runnable { noteView?.visibility = View.GONE }
+    fun notify(text: String) {
+        val tv = noteView ?: android.widget.TextView(activity).also { t ->
+            val d = activity.resources.displayMetrics.density
+            t.setTextColor(Color.WHITE); t.textSize = 18f; t.setPadding((18 * d).toInt(), (12 * d).toInt(), (18 * d).toInt(), (12 * d).toInt())
+            t.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 14 * d; setColor(Color.argb(235, 200, 16, 46)) }
+            t.elevation = 30 * d
+            root.addView(t, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP or android.view.Gravity.END).apply { topMargin = (28 * d).toInt(); rightMargin = (28 * d).toInt() })
+            noteView = t
+        }
+        tv.text = text
+        tv.visibility = View.VISIBLE
+        tv.bringToFront()
+        main.removeCallbacks(hideNote); main.postDelayed(hideNote, 9_000)
+    }
+
     /** JS'ten: bu kanal için ses gecikmesi (ms). Pozitif: ses geciktirilir. */
     fun setAudioDelay(ms: Int) { YayinRenderers.audioOffsetUs = ms.coerceIn(-3000, 5000) * 1000L; if (liveVlcOn) vlcLive?.setAudioDelay(YayinRenderers.audioOffsetUs) }
 
