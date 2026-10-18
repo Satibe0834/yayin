@@ -673,7 +673,8 @@ class NativePlayer(
     private val vlcStatTick: Runnable = object : Runnable {
         override fun run() {
             if (!liveVlcOn) return
-            emit("lstat", JSONObject().put("stalls", vlcStalls)
+            val lost = vlcLive?.lostPictures() ?: -1
+            emit("lstat", JSONObject().put("stalls", vlcStalls).apply { if (lost >= 0) put("drop", lost) }
                 .put("watched", if (vlcWatchStart > 0) (System.currentTimeMillis() - vlcWatchStart) / 1000 else 0))
             main.postDelayed(this, 2_000)
         }

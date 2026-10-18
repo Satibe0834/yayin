@@ -3361,7 +3361,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
         // Sağ sütundaki etiketleri yerinde güncelle (paneli baştan çizmeden)
         const b = $('qbBuf'), dr = $('qbDrop');
         if (b) b.textContent = bufText(sInfo);
-        if (dr) dr.textContent = `${tx('Atlanan kare')}: ${d.drop}`;
+        if (dr && d.drop != null) dr.textContent = `${tx('Atlanan kare')}: ${d.drop}`;
       }
       return;
     }
@@ -3472,7 +3472,11 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       const ac = codecName(i.amime || i.acodec, AMIME), ch = chName(i.ch); if (ac || ch) out.push(`<span class="qb">${esc([ac, ch].filter(Boolean).join(' '))}</span>`);
       if (i.vbr) out.push(`<span class="qb">${(i.vbr / 1e6).toFixed(1)} Mbit/sn</span>`);
       if (i.engine) out.push(`<span class="qb">▶ ${esc(i.engine)}</span>`);
-      if (i.engine === 'VLC') out.push(`<span class="qb" id="qbStall" style="flex-basis:100%">${stallText(i)}</span>`);
+      if (i.engine === 'VLC'){
+        out.push(`<span class="qb">⏱ ${tx('Arabellek')}: 6 sn (VLC)</span>`);
+        out.push(`<span class="qb" id="qbDrop">${tx('Atlanan kare')}: ${i.drop != null ? i.drop : '…'}</span>`);
+        out.push(`<span class="qb" id="qbStall" style="flex-basis:100%">${stallText(i)}</span>`);
+      }
       if (i.engine !== 'VLC'){
         out.push(`<span class="qb" id="qbBuf">${bufText(i)}</span>`);
         out.push(`<span class="qb" id="qbDrop">${tx('Atlanan kare')}: ${i.drop != null ? i.drop : '…'}</span>`);
@@ -4068,7 +4072,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   function mergedFor(cc){
     const epg = (mScan[cc] && mScan[cc].data) || [];
     const t = nowSec(), used = new Set(), out = [];
-    if (!FXS.list) return epg.filter(e => (e.sport || 'foot') !== 'foot');
+    if (!FXS.list) return [];
     FXS.list.filter(f => f.cc === cc || f.cc === 'INT').forEach(f => {
       const m = epg.find(e => !used.has(e) && (e.sport || 'foot') === 'foot' && Math.abs(e.start - f.start) <= 100 * 60 && fxMatchesEpg(f, e.name));
       if (m) used.add(m);
@@ -4080,11 +4084,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
       out.push({ key:`fx:${f.id}:${cc}`, name:`${f.home} - ${f.away}`, league:f.league, cc, start, end: live ? t + 3600 : start + 2 * 3600,
         chans, sport:'foot', official:true, live, score:f.score, clock:f.clock, guess: !m && chans.length > 0, desc:'' });
     });
-    epg.forEach(e => {
-      if (used.has(e)) return;
-      if ((e.sport || 'foot') === 'foot') return;   // futbol yalnızca resmi programdan: yayın akışındaki tekrarlar karışmasın
-      out.push(e);
-    });
+    // Yayın akışından gelen kayıtlar (tekrarlar, yanlış sınıflanan programlar) gösterilmez: yalnızca resmi program
     return out.sort((a, b) => a.start - b.start);
   }
   let fxTimer = null;

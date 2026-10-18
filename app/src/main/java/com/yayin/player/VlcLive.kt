@@ -147,6 +147,11 @@ class VlcLive(
         } catch (_: Throwable) {}
     }
 
+    /** Atlanan (geç kalan) kare sayısı; bilinmiyorsa -1 */
+    fun lostPictures(): Int {
+        val p = mp ?: return -1
+        return try { val m = p.media ?: return -1; try { (m as? Media)?.stats?.lostPictures ?: -1 } finally { m.release() } } catch (_: Throwable) { -1 }
+    }
     val isPlaying: Boolean get() = mp?.isPlaying == true
     fun pause() { mp?.let { if (it.isPlaying) it.pause() } }
     fun resume() { mp?.play() }
