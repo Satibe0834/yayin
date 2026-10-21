@@ -776,16 +776,20 @@ class NativePlayer(
     private var vStuckSince = 0L
     private var vStuckFired = 0
 
+    // Görüntü donuk ama ses akıyor: 8 sn boyunca hiç yeni kare çizilmediyse arayüze bildir; arayüz cihaz ayarlarını
+    // (kare hızı eşleme, hızlı kanal açılışı) sırayla kapatıp kanalı yeniden açar. Radyo gibi tek kareli yayınlar hariç.
     private fun checkVideoStuck(now: Long) {
-        if (player.videoFormat == null || vStuckFired >= 2) return
+        val vf = player.videoFormat ?: return
+        if (vStuckFired >= 1) return
+        if (vf.frameRate in 0.1f..9.9f || (vf.width in 1..319)) return     // durağan resimli radyo yayınları
         val vc = player.videoDecoderCounters ?: return
         vc.ensureUpdated()
         val r = vc.renderedOutputBufferCount
         if (r != lastRendered) { lastRendered = r; vStuckSince = now; return }
-        if (now - vStuckSince > 5_000) {
+        if (now - vStuckSince > 8_000) {
             vStuckFired++
             lastRendered = -1; vStuckSince = now
-            emit("error", JSONObject().put("code", "VIDEO_STUCK"))
+            emit("vstuck", JSONObject().put("rendered", r).put("dropped", vc.droppedBufferCount))
         }
     }
 
@@ -807,7 +811,7 @@ class NativePlayer(
                 Player.STATE_READY -> {
                     bufSince = 0L
                     val p = player.currentPosition
-                    if (p != lastPos) { lastPos = p; stuckSince = now }
+                    if (p != lastPos) { lastPos = p; stuckSince = now; checkVideoStuck(now) }
                     else if (now - stuckSince > 8_000) reconnectLive()
                 }
                 Player.STATE_BUFFERING -> {
