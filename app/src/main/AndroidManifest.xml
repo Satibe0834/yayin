@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -48,6 +49,13 @@
                 <data android:scheme="yayin" android:host="open" />
             </intent-filter>
         </activity>
+        <!-- Uygulama içi güncelleme: kurulum oturumunun sonucu ve güncellemeden sonra kendiliğinden açılış -->
+        <receiver android:name=".InstallResultReceiver" android:exported="false" />
+        <receiver android:name=".UpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- Uygulama içi güncelleme: indirilen APK'yı kurulum ekranına vermek için -->
         <provider
             android:name="androidx.core.content.FileProvider"

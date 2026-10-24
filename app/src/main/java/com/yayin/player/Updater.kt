@@ -1,7 +1,9 @@
 package com.yayin.player
 
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -19,6 +21,12 @@ import java.util.concurrent.TimeUnit
  *  3) Android'in kurulum ekranı açılır; açılmazsa uygulamadaki "Kur" düğmesiyle tekrar açılır.
  */
 class Updater(private val act: MainActivity, private val emit: (String, JSONObject) -> Unit) {
+
+    companion object {
+        /** Kurulum oturumu başarısız olursa eski (tam ekran) yöntem; kullanıcı vazgeçerse "Kur" düğmesi */
+        @Volatile var fallback: (() -> Unit)? = null
+        @Volatile var aborted: (() -> Unit)? = null
+    }
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -107,6 +115,37 @@ class Updater(private val act: MainActivity, private val emit: (String, JSONObje
         val f = ready ?: dir()?.listFiles()?.filter { it.name.endsWith(".apk") }?.maxByOrNull { it.lastModified() }
         if (f == null || !f.exists()) { emit("upd", JSONObject().put("err", "Kurulacak dosya bulunamadı, tekrar indirin")); return }
         if (!canInstall()) { requestPermission(); return }
+        // Önce Android'in kurulum oturumu: küçük onay penceresi; Android 12+ telefonlarda sonraki güncellemeler onaysız
+        if (!sessionFailed && Build.VERSION.SDK_INT >= 23) {
+            fallback = { act.runOnUiThread { sessionFailed = true; installView(f) } }
+            aborted = { act.runOnUiThread { emit("upd", JSONObject().put("back", true)) } }
+            Thread {
+                try {
+                    val pi = act.packageManager.packageInstaller
+                    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                    if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                    val id = pi.createSession(params)
+                    pi.openSession(id).use { s ->
+                        f.inputStream().use { inp ->
+                            s.openWrite("update.apk", 0, f.length()).use { out -> inp.copyTo(out); s.fsync(out) }
+                        }
+                        val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                        val pend = PendingIntent.getBroadcast(act, id, Intent(act, InstallResultReceiver::class.java), flags)
+                        s.commit(pend.intentSender)
+                    }
+                    emit("upd", JSONObject().put("installing", true))
+                } catch (e: Exception) {
+                    act.runOnUiThread { sessionFailed = true; installView(f) }
+                }
+            }.start()
+            return
+        }
+        installView(f)
+    }
+    @Volatile private var sessionFailed = false
+
+    /** Eski yöntem: Android'in tam ekran kurulum uygulaması */
+    private fun installView(f: File) {
         val uri = if (Build.VERSION.SDK_INT >= 24) FileProvider.getUriForFile(act, "${act.packageName}.files", f) else Uri.fromFile(f)
         val i = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/vnd.android.package-archive")
