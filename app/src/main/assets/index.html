@@ -709,7 +709,7 @@ html.no-weather .clock{gap:0}
 html.native body{background:transparent}
 html.native .stage{background:transparent}
 html.native #v{visibility:hidden}
-.stage.fake-fs{position:fixed;inset:0;z-index:40;aspect-ratio:auto;min-height:0}
+.stage.fake-fs{position:fixed;inset:0;z-index:40;aspect-ratio:auto !important;min-height:0;width:100vw !important;height:100vh !important;max-height:none !important;border-radius:0 !important}
 .app.nosidebar{grid-template-columns:1fr}
 .app.nosidebar .side{display:none}
 .in-app #pip{display:none}
@@ -2490,7 +2490,10 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     const s = e.target.closest('[data-star]');
     if (s){ e.stopPropagation(); favToggle(view[+s.dataset.star]); return; }
     const row = e.target.closest('.ch'); if (row){ const c = view[+row.dataset.i]; cursorI = +row.dataset.i; lz = 'chans';
-      if (c.kind !== 'live') watchItem(c); else if (current && current.url === c.url && !touchOnly) $('player').classList.add('nosidebar'); else play(c); updateEpgPanel(); }
+      if (c.kind !== 'live') watchItem(c);
+      else if (isPlayingCh(c)){ if (touchOnly) toggleFS($('stage')); else $('player').classList.add('nosidebar'); }   // oynayan kanala tekrar dokun: tam ekran
+      else play(c);
+      updateEpgPanel(); }
   });
   $('q').addEventListener('input', e => { query = e.target.value.trim(); list.scrollTop = 0; computeView(); });
   $('group').addEventListener('change', e => { const k = liveCats[+e.target.value]; if (k) selectLiveCat(k.id); });
@@ -2621,7 +2624,11 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   $('vol').oninput = e => { v.volume = +e.target.value; v.muted = false; NATIVE?.nativeVolume(v.volume); NATIVE?.nativeMute(false); $('mute').textContent='🔊'; store.set('vol', v.volume); };
   $('fs').onclick = () => toggleFS($('stage'));
   $('pip').onclick = () => document.pictureInPictureElement ? document.exitPictureInPicture() : v.requestPictureInPicture?.().catch(()=>{});
-  $('stage').addEventListener('dblclick', () => $('fs').onclick());
+  $('stage').addEventListener('dblclick', () => { if (!touchOnly) $('fs').onclick(); });
+  $('stage').addEventListener('click', e => {
+    if (!touchOnly || e.target.closest('button, input, select, a, .ctrls')) return;
+    if (current && current.kind === 'live') $('fs').onclick();
+  });
   // Telefon: tam ekran canlı yayında ve web oynatıcıda ekranı yatay çevir, çıkınca serbest bırak
   function phoneOrient(){
     if (!APP || IS_TV || !NATIVE || !NATIVE.nativeLandscape) return;

@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
+import android.widget.ScrollView
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.widget.TextView
@@ -89,7 +90,7 @@ class VlcVod(
     }
     private val hintText: TextView = TextView(activity).apply {
         setTextColor(Color.argb(160, 255, 255, 255)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        text = "OK: duraklat  ·  ◀ ▶: 10 sn  ·  ▲: ses dili  ·  ▼: altyazı  ·  CH +/-: bölüm"
+        text = "OK: duraklat  ·  ◀ ▶: 10 sn  ·  ▲: ses  ·  ▼: altyazı  ·  ☰: görüntü  ·  CH +/-: bölüm"
     }
     // Teşhis satırı: indirme hızı, atlanan kare, takılma sayısı
     private val statText: TextView = TextView(activity).apply {
@@ -114,9 +115,104 @@ class VlcVod(
         addView(touchBtn("⏯") { toggle() }, lp())
         addView(touchBtn("10 ⏩") { seekBy(10_000) }, lp())
         addView(touchBtn("⏭") { cb.onVlcNext(1) }, lp())
-        addView(touchBtn("🔊") { cycleAudio() }, lp())
-        addView(touchBtn("💬") { cycleSub() }, lp())
+        addView(touchBtn("🔊 Ses") { openAudioMenu() }, lp())
+        addView(touchBtn("💬 Altyazı") { openSubMenu() }, lp())
+        addView(touchBtn("📺 Görüntü") { openVideoMenu() }, lp())
     }
+    // TV: bilgi panelinde üç düğme görünümü (kumandada ▲ ▼ ☰ ile açılır)
+    private val tvRow: LinearLayout = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        val lp = { LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { setMargins(0, 0, dp(10), 0) } }
+        addView(touchBtn("🔊 Ses  ▲") { openAudioMenu() }, lp())
+        addView(touchBtn("💬 Altyazı  ▼") { openSubMenu() }, lp())
+        addView(touchBtn("📺 Görüntü  ☰") { openVideoMenu() }, lp())
+    }
+
+    // ---------------- Seçim listesi (ses / altyazı / görüntü) ----------------
+    private class MenuItem(val label: String, val on: Boolean, val act: () -> Unit)
+    private var menuItems: List<MenuItem> = emptyList()
+    private var menuSel = 0
+    private val menuTitle: TextView = TextView(activity).apply {
+        setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); paint.isFakeBoldText = true
+        setPadding(dp(18), dp(14), dp(18), dp(8))
+    }
+    private val menuList: LinearLayout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), 0, dp(8), dp(10)) }
+    private val menuScroll: ScrollView = ScrollView(activity).apply { addView(menuList) }
+    private val menuBox: LinearLayout = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        background = GradientDrawable().apply { cornerRadius = dp(18).toFloat(); setColor(Color.argb(240, 22, 34, 58)) }
+        elevation = dp(20).toFloat()
+        visibility = View.GONE
+        addView(menuTitle)
+        addView(menuScroll, LinearLayout.LayoutParams(dp(360), WRAP_CONTENT))
+        isClickable = true
+    }
+    val menuOpen: Boolean get() = menuBox.visibility == View.VISIBLE
+
+    private fun openMenu(title: String, items: List<MenuItem>) {
+        if (items.isEmpty()) return
+        menuItems = items
+        menuSel = items.indexOfFirst { it.on }.coerceAtLeast(0)
+        menuTitle.text = title
+        paintMenu()
+        menuBox.visibility = View.VISIBLE
+        menuBox.bringToFront()
+        main.removeCallbacks(hideOverlay)
+        overlay.visibility = View.VISIBLE
+    }
+    private fun closeMenu() { menuBox.visibility = View.GONE; showOverlay() }
+    private fun paintMenu() {
+        menuList.removeAllViews()
+        menuItems.forEachIndexed { i, it ->
+            val tv = TextView(activity).apply {
+                text = (if (it.on) "✓  " else "     ") + it.label
+                setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(if (i == menuSel) Color.argb(255, 208, 13, 51) else Color.TRANSPARENT) }
+                isFocusable = false
+                setOnClickListener { menuSel = i; pickMenu() }
+            }
+            menuList.addView(tv, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        }
+        menuList.post {
+            val v = menuList.getChildAt(menuSel) ?: return@post
+            menuScroll.smoothScrollTo(0, (v.top - menuScroll.height / 3).coerceAtLeast(0))
+        }
+    }
+    private fun pickMenu() { val it = menuItems.getOrNull(menuSel) ?: return; it.act(); closeMenu() }
+
+    private fun openAudioMenu() {
+        val p = mp ?: return
+        val cur = p.audioTrack
+        val items = (p.audioTracks ?: emptyArray()).filter { it.id >= 0 }.map { t -> MenuItem(t.name ?: "Ses ${t.id}", t.id == cur) { p.setAudioTrack(t.id) } }
+        if (items.isEmpty()) { toast("Ses parçası bulunamadı"); return }
+        openMenu("🔊 Ses", items)
+    }
+    private fun openSubMenu() {
+        val p = mp ?: return
+        val cur = p.spuTrack
+        val items = (p.spuTracks ?: emptyArray()).map { t -> MenuItem(if (t.id < 0) "Kapalı" else (t.name ?: "Altyazı ${t.id}"), t.id == cur) { p.setSpuTrack(t.id) } }
+        if (items.isEmpty()) { toast("Bu yayında altyazı yok"); return }
+        openMenu("💬 Altyazı", items)
+    }
+    private var aspectNow = "fit"
+    private fun openVideoMenu() {
+        val p = mp ?: return
+        val items = mutableListOf<MenuItem>()
+        // Birden fazla görüntü (çözünürlük) seçeneği varsa
+        val vts = (p.videoTracks ?: emptyArray()).filter { it.id >= 0 }
+        val curV = p.videoTrack
+        if (vts.size > 1) vts.forEach { t -> items += MenuItem("Çözünürlük: " + (t.name ?: "Görüntü ${t.id}"), t.id == curV) { p.setVideoTrack(t.id) } }
+        else {
+            val vt = try { p.currentVideoTrack } catch (_: Throwable) { null }
+            if (vt != null && vt.width > 0) items += MenuItem("Çözünürlük: ${vt.width}×${vt.height} (tek seçenek)", true) {}
+        }
+        items += MenuItem("Görüntü: Ekrana sığdır", aspectNow == "fit") { setAspect("fit"); aspectNow = "fit" }
+        items += MenuItem("Görüntü: Ekranı doldur", aspectNow == "zoom") { setAspect("zoom"); aspectNow = "zoom" }
+        items += MenuItem("Görüntü: Uzat", aspectNow == "fill") { setAspect("fill"); aspectNow = "fill" }
+        openMenu("📺 Görüntü", items)
+    }
+
     private val closeBtn: TextView = TextView(activity).apply {
         text = "✕"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
         gravity = Gravity.CENTER; isFocusable = false
@@ -138,13 +234,17 @@ class VlcVod(
         addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) })
         addView(statText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
         if (touch) addView(touchRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
-        else addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) })
+        else {
+            addView(tvRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) })
+            addView(hintText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) })
+        }
     }
 
     init {
         container.addView(videoLayout, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         container.addView(spinner, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
         container.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
+        container.addView(menuBox, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.BOTTOM).apply { setMargins(0, dp(24), dp(28), dp(150)) })
         if (touch) {
             container.addView(closeBtn, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.START).apply { setMargins(dp(16), dp(16), 0, 0) })
             // Dokunma: bir kez → kontrolleri göster/gizle; çift dokunma sol/sağ yarı → 10 sn geri/ileri
@@ -386,6 +486,16 @@ class VlcVod(
 
     /** Kumanda tuşları. Geri tuşu için false döner (uygulama kapatır). */
     fun onKey(e: KeyEvent): Boolean {
+        if (menuOpen) {
+            if (e.action != KeyEvent.ACTION_DOWN) return true
+            when (e.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> { if (menuSel > 0) { menuSel--; paintMenu() } }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { if (menuSel < menuItems.size - 1) { menuSel++; paintMenu() } }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> pickMenu()
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MENU -> closeMenu()
+            }
+            return true      // Geri tuşu filmi kapatmasın, sadece listeyi kapatsın
+        }
         if (e.action != KeyEvent.ACTION_DOWN) {
             return e.keyCode != KeyEvent.KEYCODE_BACK
         }
@@ -398,8 +508,9 @@ class VlcVod(
             KeyEvent.KEYCODE_DPAD_RIGHT -> { seekBy(step); return true }
             KeyEvent.KEYCODE_MEDIA_REWIND -> { seekBy(-30_000); return true }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seekBy(30_000); return true }
-            KeyEvent.KEYCODE_DPAD_UP -> { if (e.repeatCount == 0) cycleAudio(); showOverlay(); return true }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_MENU -> { if (e.repeatCount == 0) cycleSub(); showOverlay(); return true }
+            KeyEvent.KEYCODE_DPAD_UP -> { if (e.repeatCount == 0) openAudioMenu(); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { if (e.repeatCount == 0) openSubMenu(); return true }
+            KeyEvent.KEYCODE_MENU -> { if (e.repeatCount == 0) openVideoMenu(); return true }
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_MEDIA_NEXT -> { if (e.repeatCount == 0) cb.onVlcNext(1); return true }
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { if (e.repeatCount == 0) cb.onVlcNext(-1); return true }
             KeyEvent.KEYCODE_BACK -> return false
