@@ -2563,7 +2563,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     if (kidsLocked()){ kidsLock(); return; }
     if (!c) return;
     if (!auto) c = smartPick(c);
-    if (!current || current.url !== c.url){ smartStalls = []; smartLastN = 0; smartPlayed = false; clearTimeout(smartLongT); smartLongT = null; }
+    if (!current || current.url !== c.url){ smartStalls = []; smartLastN = 0; smartPlayed = false; clearTimeout(smartLongT); smartLongT = null; try { hbSoon(); } catch {} }
     if (!auto) failTried.clear();
     clearTimeout(stallT); hidePreview(); sInfo = null; lastErrCode = ''; $('osdQ').innerHTML = ''; tsState = null; paintTs();
     if (current && current.url !== c.url) previous = current;
@@ -4946,8 +4946,14 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (!APP || !NATIVE || !XT || !XT.user || document.hidden) return;
     let dev = {}; try { dev = JSON.parse(NATIVE.deviceInfo ? NATIVE.deviceInfo() : '{}'); } catch {}
     const now = Date.now(), bws = autoS.bw.slice(-20);
+    const vodT = nativeVodOpen && typeof wCur !== 'undefined' && wCur ? (wCur.name || wCur.title || '') : '';
+    const hk = Math.floor(now / 3600e3), today = Object.entries(autoS.w).filter(([k]) => +k > hk - 24).reduce((a, [, v]) => a + v, 0);
     const body = {
       user:XT.user, dev:hbDev, model: FIRE_MODELS[dev.model] || dev.model || '', tv: !!dev.tv,
+      ch: nativeVodOpen ? vodT : (current && current.kind === 'live' ? current.name : ''),
+      sdk: dev.sdk || 0, mem: dev.mem || 0, uhd: !!dev.uhd,
+      buf: sInfo && sInfo.buf != null ? Math.round(sInfo.buf * 10) / 10 : -1, drop: sInfo && sInfo.drop != null ? sInfo.drop : -1,
+      bp: cfg.buffer, ua: cfg.uaPreset || '', today: Math.round(today / 60),
       ver: (upd && upd.info && upd.info.name) || '', bw: bws.length ? Math.round(median(bws) / 1e5) / 10 : 0,
       st: autoS.st.filter(t => t > now - 3600e3).length,
       mode: nativeVodOpen ? 'vod' : (current && current.kind === 'live' && !$('player').classList.contains('hidden')) ? 'live' : 'menu',
@@ -4956,6 +4962,9 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   setTimeout(heartbeat, 30e3);
   setInterval(heartbeat, 15 * 60e3);
+  // Kanal / film değişince hemen bildir (en sık 5 dakikada bir)
+  let hbLast = 0;
+  function hbSoon(){ if (Date.now() - hbLast < 5 * 60e3) return; hbLast = Date.now(); setTimeout(heartbeat, 20e3); }
   function applyCfg(boot){
     const h = document.documentElement.classList;
     h.toggle('no-scan', !cfg.scan); h.toggle('calm', !cfg.motion); h.toggle('no-weather', !cfg.homeWx); h.toggle('no-devinfo', !cfg.homeInfo);
