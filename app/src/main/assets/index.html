@@ -4058,7 +4058,12 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     brugge:'bruges', koln:'koeln', cologne:'koeln', torino:'turin', 'gladbach':'monchengladbach', 'monchengladbach':'monchengladbach', 'wolfsburg':'wolfsburg',
     'atletico':'atletico', 'napoli':'napoli', 'sevilla':'sevilla', 'seville':'sevilla', 'juventus':'juventus', 'tottenham':'tottenham', 'spurs':'tottenham' };
   const FX_STOP = /^(fc|sk|sc|ac|as|cf|afc|fk|jk|bk|if|ss|us|ssc|vfb|vfl|tsg|sv|rb|rc|cd|ud|sd|ca|club|spor|kulubu|calcio|de|of|the|1|04|05|1899|1909|1846)$/;
+  const fxTokCache = new Map();
   function fxTokens(n){
+    const k = String(n || ''); const c = fxTokCache.get(k); if (c) return c;
+    const r = fxTokens0(k); if (fxTokCache.size > 5000) fxTokCache.clear(); fxTokCache.set(k, r); return r;
+  }
+  function fxTokens0(n){
     return nrm(n).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(w => w && !FX_STOP.test(w)).map(w => FX_ALIAS[w] || w).filter(w => w.length >= 3);
   }
   const fxSame = (a, b) => { const A = fxTokens(a), B = fxTokens(b); return A.some(x => B.some(y => x === y || (x.length >= 5 && y.length >= 5 && (x.startsWith(y.slice(0, 5)) || y.startsWith(x.slice(0, 5)))))); };
@@ -4089,7 +4094,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   function loadFixtures(force, only){
     if (FXS.loading) return FXS.loading;
-    if (!force && FXS.list && Date.now() - FXS.at < 3 * 60e3) return Promise.resolve(FXS.list);
+    if (!force && FXS.list && Date.now() - FXS.at < 10 * 60e3) return Promise.resolve(FXS.list);
     const days = [fxDay(new Date(Date.now() - 6 * 3600e3)), fxDay(new Date()), fxDay(new Date(Date.now() + 24 * 3600e3))]
       .filter((d, i, a) => a.indexOf(d) === i);
     const out = [], seenEv = new Set();
@@ -4118,7 +4123,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     FXS.loading = Promise.all(Array.from({ length:6 }, work)).then(() => {
       FXS.loading = null;
       if (ok){
-        if (only && FXS.list){ FXS.list = FXS.list.filter(f => !only.includes(f.slug)).concat(out); }
+        if (only && FXS.list){ FXS.list = FXS.list.filter(f => !only.includes(f.slug)).concat(out); FXS.at = FXS.at + 1; }
         else { FXS.list = out; FXS.at = Date.now(); FXS.leagues = ok; }
         FXS.failed = false;
       } else if (!only) FXS.failed = true;
@@ -4144,7 +4149,13 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   }
   // Bu ülkenin listesi: resmi maçlar + (futbol dışı sporlar ve resmi kaynağın kapsamadığı ligler için) yayın akışı
   const FX_COVERED = /s[üu]per ?lig|bundesliga|premier|championship|la ?liga|serie a|ligue 1|eredivisie|liga portugal|primeira|pro league|premiership|şampiyonlar|champions|avrupa ligi|europa|konferans|conference|uluslar|nations|d[üu]nya kupas|world ?cup|euro\b|pokal|fa cup|carabao|copa del rey|coppa italia|super league/i;
+  const mergeCache = new Map();
   function mergedFor(cc){
+    const S = mScan[cc], key = [FXS.at, FXS.list ? FXS.list.length : -1, S ? S.at : 0, Math.floor(nowSec() / 60)].join('|');
+    const c = mergeCache.get(cc); if (c && c.key === key) return c.val;
+    const val = mergedFor0(cc); mergeCache.set(cc, { key, val }); return val;
+  }
+  function mergedFor0(cc){
     const epg = (mScan[cc] && mScan[cc].data) || [];
     const t = nowSec(), used = new Set(), out = [];
     if (!FXS.list) return [];
@@ -4284,13 +4295,17 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   let fxTimer = null;
   function fxStart(){
     clearInterval(fxTimer);
-    const go = () => loadFixtures().then(() => {
+    const go = () => {
+      const t = nowSec();
+      const hot = FXS.list ? [...new Set(FXS.list.filter(f => f.state === 'in' || (f.start - t < 30 * 60 && f.start - t > -3 * 3600)).map(f => f.slug))] : [];
+      const p = (!FXS.list || Date.now() - FXS.at > 10 * 60e3) ? loadFixtures() : hot.length ? loadFixtures(true, hot) : Promise.resolve();
+      return p.then(() => {
       if ($('matches').classList.contains('hidden')){ clearInterval(fxTimer); return; }
       if (!$('mBody').contains(document.activeElement)) renderMatches(false);
       else { const t = nowSec(), d = mData(); if (d) $('mCount').textContent = $('mCount').textContent; }
       updateMatchTile();
-    });
-    go(); fxTimer = setInterval(go, 3 * 60e3);
+    }); };
+    go(); fxTimer = setInterval(go, 2 * 60e3);
     if (!$('mBody').contains(document.activeElement)) setTimeout(() => renderMatches(false), 50);
   }
 
@@ -4370,7 +4385,6 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (mSel === 'ALL'){ const S = mScan[homeCountry()]; if (!S || !S.data || Date.now() - S.at > 30 * 60e3) mSel = homeCountry(); }
     selectMCountry(mSel || homeCountry());
     requestAnimationFrame(() => $('mcats').querySelector('[aria-current="true"]')?.focus());
-    setTimeout(scanAllCountries, 2500);
     fxStart();
   }
   $('mcats') && $('mcats').addEventListener('click', e => { const b = e.target.closest('[data-cc]'); if (b){ selectMCountry(b.dataset.cc, true); requestAnimationFrame(() => $('mcats').querySelector(`[data-cc="${b.dataset.cc}"]`)?.focus()); } });
