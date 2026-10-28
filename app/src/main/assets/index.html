@@ -4877,6 +4877,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
   // ---------- ⚙ Otomatik ayar ----------
   // Cihazın gücüne, ölçülen internet hızına ve takılma geçmişine göre ayarları kendiliğinden en kararlı hâle getirir.
   const autoS = Object.assign({ st:[], w:{}, bw:[], vbr:[] }, lsGet('yayin:autoS', {}));
+  autoS.bw = (autoS.bw || []).filter(x => x !== 30000000);     // eski kayıtlardaki sahte "30 Mbit" değerlerini at
   let autoLastSt = 0, autoSaveT = 0, autoRunAt = 0;
   function autoCollect(d){
     if (cfg.autoTune === false || !current || current.kind !== 'live') return;
@@ -4884,7 +4885,8 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (d.stalls > autoLastSt) autoS.st.push(now);
     autoLastSt = d.stalls || 0;
     if (d.buf != null || d.watched) autoS.w[hk] = (autoS.w[hk] || 0) + 2;          // 2 sn'de bir gelir
-    if (d.bw > 0){ autoS.bw.push(d.bw); if (autoS.bw.length > 60) autoS.bw.shift(); }
+    // 30 Mbit/sn: henüz ölçüm yokken oynatıcının başlangıç tahmini — gerçek ölçüm sayılmaz
+    if (d.bw > 0 && d.bw !== 30000000){ autoS.bw.push(d.bw); if (autoS.bw.length > 60) autoS.bw.shift(); }
     if (d.vbr > 0){ autoS.vbr.push(d.vbr); if (autoS.vbr.length > 60) autoS.vbr.shift(); }
     if (now - autoSaveT > 60e3){
       autoSaveT = now;
