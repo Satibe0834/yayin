@@ -440,6 +440,28 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface fun nativeAudioDelay(ms: Int) = runOnUiThread { native.setAudioDelay(ms) }
         @JavascriptInterface fun nativeLandscape(on: Boolean) = runOnUiThread { native.setJsLandscape(on) }
         @JavascriptInterface fun nativeNotify(text: String) = runOnUiThread { native.notify(text.take(160)) }
+        /** Otomatik ayar için cihaz bilgisi: bellek, Android sürümü, 4K/HEVC çözme desteği */
+        @JavascriptInterface fun deviceInfo(): String {
+            val o = org.json.JSONObject()
+            try {
+                val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                val mi = android.app.ActivityManager.MemoryInfo(); am.getMemoryInfo(mi)
+                o.put("mem", mi.totalMem / 1048576).put("lowRam", am.isLowRamDevice)
+            } catch (_: Exception) {}
+            var hevc = false; var uhd = false
+            try {
+                for (ci in android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos) {
+                    if (ci.isEncoder) continue
+                    for (t in ci.supportedTypes) if (t.equals("video/hevc", true)) {
+                        hevc = true
+                        val vc = ci.getCapabilitiesForType(t).videoCapabilities
+                        if (vc != null && vc.isSizeSupported(3840, 2160)) uhd = true
+                    }
+                }
+            } catch (_: Exception) {}
+            return o.put("sdk", android.os.Build.VERSION.SDK_INT).put("model", android.os.Build.MODEL ?: "")
+                .put("hevc", hevc).put("uhd", uhd).put("tv", native.isTvDevice).put("cores", Runtime.getRuntime().availableProcessors()).toString()
+        }
         @JavascriptInterface fun nativeConfig(json: String) = runOnUiThread { native.applyConfig(json) }
         @JavascriptInterface fun nativeCloseVod() = runOnUiThread { native.closeVod() }
 

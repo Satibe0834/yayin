@@ -120,6 +120,8 @@ class NativePlayer(
     private var tsEnabled = false
     private var tsKeepMin = 30
 
+    // Ölçülen indirme hızı (bit/sn) — otomatik ayar için (player oluşturulmadan önce tanımlı olmalı)
+    private var bwMeter: DefaultBandwidthMeter? = null
     var player: ExoPlayer = buildPlayer()
         private set
 
@@ -171,6 +173,7 @@ class NativePlayer(
 
         // Bağlantı hızı ölçülene kadar düşük kaliteyle başlamasın: başlangıç tahmini yüksek
         val bandwidth = DefaultBandwidthMeter.Builder(activity).setInitialBitrateEstimate(30_000_000L).build()
+        if (handleAudioFocus) bwMeter = bandwidth
 
         val built = ExoPlayer.Builder(activity, renderers)
             .setBandwidthMeter(bandwidth)
@@ -880,7 +883,9 @@ class NativePlayer(
             .put("lastStallBuf", lastStallBuf)
             .put("lastStallAgo", if (lastStallAt > 0) (System.currentTimeMillis() - lastStallAt) / 1000 else -1)
             .put("minBuf", minBuf)
-            .put("watched", if (watchStart > 0) (System.currentTimeMillis() - watchStart) / 1000 else 0))
+            .put("watched", if (watchStart > 0) (System.currentTimeMillis() - watchStart) / 1000 else 0)
+            .put("bw", bwMeter?.bitrateEstimate ?: 0L)
+            .put("vbr", player.videoFormat?.let { if (it.bitrate > 0) it.bitrate else it.peakBitrate } ?: -1))
     }
 
     /** Aynı kanalı baştan bağlar. 2 dakikada 4'ten fazla gerekirse arayüzün kurtarma adımlarına bırakır. */
