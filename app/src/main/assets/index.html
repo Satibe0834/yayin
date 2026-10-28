@@ -4932,6 +4932,28 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     return i && i.why && i.why.length ? base + ' ' + tx('Şu an') + ': ' + i.why.join(' · ') : base;
   }
   setTimeout(() => autoTune(true), 8000);
+
+  // ---------- 🟢 Çevrimiçi bildirimi (yönetim panelinde görünür) ----------
+  // 15 dakikada bir: hat kullanıcı adı, cihaz modeli, sürüm, ölçülen internet hızı, son 1 saatteki takılma, ne yapıldığı.
+  // İzlenen kanal GÖNDERİLMEZ.
+  const FIRE_MODELS = { AFTKA:'Fire TV Stick 4K Max', AFTKRT:'Fire TV Stick 4K Max (2.)', AFTKM:'Fire TV Stick 4K (2.)', AFTMM:'Fire TV Stick 4K',
+    AFTSSS:'Fire TV Stick (3.)', AFTSS:'Fire TV Stick Lite', AFTT:'Fire TV Stick (2.)', AFTM:'Fire TV Stick (1.)', AFTR:'Fire TV Cube', AFTGAZL:'Fire TV Cube (3.)' };
+  let hbDev = lsGet('yayin:devId', '');
+  if (!hbDev){ hbDev = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); try { localStorage.setItem('yayin:devId', JSON.stringify(hbDev)); } catch {} }
+  function heartbeat(){
+    if (!APP || !NATIVE || !XT || !XT.user || document.hidden) return;
+    let dev = {}; try { dev = JSON.parse(NATIVE.deviceInfo ? NATIVE.deviceInfo() : '{}'); } catch {}
+    const now = Date.now(), bws = autoS.bw.slice(-20);
+    const body = {
+      user:XT.user, dev:hbDev, model: FIRE_MODELS[dev.model] || dev.model || '', tv: !!dev.tv,
+      ver: (upd && upd.info && upd.info.name) || '', bw: bws.length ? Math.round(median(bws) / 1e5) / 10 : 0,
+      st: autoS.st.filter(t => t > now - 3600e3).length,
+      mode: nativeVodOpen ? 'vod' : (current && current.kind === 'live' && !$('player').classList.contains('hidden')) ? 'live' : 'menu',
+    };
+    fetch(ACT_URL + '/api/tv/hb', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(body) }).catch(() => {});
+  }
+  setTimeout(heartbeat, 30e3);
+  setInterval(heartbeat, 15 * 60e3);
   function applyCfg(boot){
     const h = document.documentElement.classList;
     h.toggle('no-scan', !cfg.scan); h.toggle('calm', !cfg.motion); h.toggle('no-weather', !cfg.homeWx); h.toggle('no-devinfo', !cfg.homeInfo);
