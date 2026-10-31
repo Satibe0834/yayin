@@ -61,6 +61,7 @@ html.live-bg .home::before{background:linear-gradient(180deg, rgba(0,0,0,.45), r
 .tile svg{width:clamp(44px,5vw,70px);height:auto}
 .tile .tt{font:700 clamp(17px,1.8vw,24px)/1 var(--display)}
 .tile .cnt{font-size:13px;color:rgba(255,255,255,.7);min-height:1.2em}
+.tile .cnt.cnt-load{color:#ff2a3a !important;font-weight:800;font-size:15px;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.6)}
 .tile.sel,.tile:hover{transform:scale(1.1);z-index:2;
   background:linear-gradient(160deg, rgba(255,255,255,.34), rgba(var(--accent-rgb),.45));
   box-shadow:0 0 0 3px #fff, 0 0 0 7px rgba(0,0,0,.45), 0 0 34px 6px rgba(var(--accent-rgb),.75), 0 24px 60px rgba(0,0,0,.5)}
@@ -2350,6 +2351,8 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
     document.querySelector('[data-count=movie]').textContent = channels.length ? `${n.movie} film` : '';
     const ns = (XT ? (seriesAll || []) : (channels.length ? getSeries() : [])).filter(S => allowed('series', S.group)).length;
     document.querySelector('[data-count=series]').textContent = ns ? `${ns} dizi` : '';
+    // Yükleniyor / yüklenemedi yazıları kırmızı ve kalın: daha belirgin
+    ['live','movie','series'].forEach(k => document.querySelector(`[data-count=${k}]`).classList.toggle('cnt-load', !!xLoading));
     if (xLoading){ ['live','movie','series'].forEach(k => document.querySelector(`[data-count=${k}]`).textContent = 'Yükleniyor…'); }
     else if (XT && xFailed.length){
       if (xFailed.includes('Canlı kanallar')) document.querySelector('[data-count=live]').textContent = 'Yüklenemedi – ↻ ile yenile';
