@@ -1373,7 +1373,12 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   addEventListener('error', e => { const m = (e.message || '') + (e.lineno ? ' @' + e.lineno : ''); if (APP && m && !seenErr.has(m)){ seenErr.add(m); toast('Hata: ' + m.slice(0, 120)); } });
   addEventListener('unhandledrejection', e => { const m = String(e.reason && e.reason.message || e.reason || ''); if (APP && m && !seenErr.has(m) && !/abort/i.test(m)){ seenErr.add(m); toast('Hata: ' + m.slice(0, 120)); } });
   function toggleFS(el){
-    if (APP){ el.classList.toggle('fake-fs'); return; }
+    if (APP){
+      const on = el.classList.toggle('fake-fs');
+      // Tam ekranda kanal listesi, kategoriler ve yayın akışı da gizlensin (TV'deki tam ekranla aynı)
+      if (el.id === 'stage') $('player').classList.toggle('nosidebar', on);
+      return;
+    }
     document.fullscreenElement ? document.exitFullscreen() : el.requestFullscreen?.();
   }
   function addExternal(box, c){
@@ -3627,7 +3632,7 @@ ${G}WhatCarCanYouGetForAGrand.mp4`, 'Deneme içerikleri');
     if (!$('search').classList.contains('hidden') || !$('matches').classList.contains('hidden')){ showHome(); return true; }
     if (!$('themes').classList.contains('hidden')){ closeThemes(); return true; }
     if (!$('settings').classList.contains('hidden')){ settingsBack(); return true; }
-    if ($('stage').classList.contains('fake-fs')){ $('stage').classList.remove('fake-fs'); return true; }
+    if ($('stage').classList.contains('fake-fs')){ $('stage').classList.remove('fake-fs'); $('player').classList.remove('nosidebar'); return true; }
     if ($('player').classList.contains('nosidebar')){ exitFull(); return true; }
     if (document.activeElement && document.activeElement.matches('input')){ document.activeElement.blur(); return true; }
     if (!$('vod').classList.contains('hidden') || !$('player').classList.contains('hidden')){ showHome(); return true; }
