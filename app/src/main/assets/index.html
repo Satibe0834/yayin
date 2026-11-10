@@ -196,8 +196,16 @@ video{width:100%;height:100%;background:#000;display:block}
 .poster{background:none;border:0;padding:0;text-align:left;outline:none;color:inherit;min-width:0}
 .art{position:relative;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:var(--panel-2);transition:transform .18s ease, box-shadow .18s ease}
 .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.poster:hover,.poster:focus-visible{position:relative;z-index:2}
-.poster:hover .art,.poster:focus-visible .art{transform:scale(1.06);box-shadow:0 0 0 3px #fff,0 18px 40px rgba(0,0,0,.6)}
+.poster:hover,.poster:focus-visible,.poster:focus{position:relative;z-index:2}
+/* Seçili afiş: kalın beyaz çerçeve + koyu hale + temanın renginde parıltı; her afişte belirgin */
+.poster:hover .art,.poster:focus-visible .art,.poster:focus .art{transform:scale(1.1);
+  box-shadow:0 0 0 5px #fff, 0 0 0 9px rgba(0,0,0,.65), 0 0 34px 10px rgba(var(--accent-rgb),.9), 0 18px 40px rgba(0,0,0,.6)}
+.poster:focus .pt,.poster:focus-visible .pt{color:#fff;background:rgba(var(--accent-rgb),.9);border-radius:6px;padding:2px 6px;margin-top:12px}
+/* Seçili olmayan afişler biraz soluk: hangisinde olduğunuz bir bakışta belli olsun */
+html.tv .grid:focus-within .poster:not(:focus) .art,html.tv .row-scroll:focus-within .poster:not(:focus) .art{opacity:.72}
+.art{will-change:transform}
+html.tv .poster:hover:not(:focus) .art{transform:none;box-shadow:none}
+@media (min-width:561px){.vod .grid{padding-top:18px;padding-left:12px;padding-right:12px}}
 @media (prefers-reduced-motion:reduce){.art{transition:none}}
 .gen{position:absolute;inset:0;display:flex;align-items:flex-end;padding:12px;font:800 clamp(16px,1.6vw,21px)/1.05 var(--display);letter-spacing:-.01em;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.35);overflow-wrap:anywhere}
 .gen::before{content:"";position:absolute;top:12px;left:12px;width:22px;height:4px;border-radius:2px;background:rgba(255,255,255,.7)}
